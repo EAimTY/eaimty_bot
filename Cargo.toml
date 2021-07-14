@@ -1,0 +1,14 @@
+[package]
+name = "eaimty_bot"
+description = "个人用 Telegram Bot，使用 Rust 编写，基于 carapax"
+version = "0.1.1"
+authors = ["EAimTY <ea.imty@gmail.com>"]
+edition = "2018"
+readme = "README.md"
+license = "GPL-3.0 License"
+repository = "https://github.com/EAimTY/eaimty_bot"
+
+[dependencies]
+tokio = {version = "1.8", features = ["rt-multi-thread", "macros"]}
+carapax = "0.10"
+clap = "2.33"
