@@ -1,2 +1,3 @@
-pub mod dice_command;
-pub mod dart_command;
+pub mod dice;
+pub mod dart;
+pub mod ocr;

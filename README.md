@@ -20,9 +20,14 @@
 - [x] 掷骰子（`/dice` 或文字内容包含 `骰子`）
 - [x] 掷飞标（`/dart` 或文字内容包含 `飞标`）
 - [x] 没有，没有，没有，通过！（文字内容包含 `有没有`）
+- [x] OCR（`/ocr`）
 - [ ] 扫雷（`/minesweeper`）
-- [ ] OCR（`/ocr`）
+
 ...
+
+## 依赖
+
+Leptonica、Tesseract、Tesseract 语言包（eng、jpn、chi_sim、chi_tra）
 
 ## 编译
 

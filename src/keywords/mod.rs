@@ -1,3 +1,3 @@
-pub mod dice_keyword;
-pub mod dart_keyword;
-pub mod unanimity_keyword;
+pub mod dice;
+pub mod dart;
+pub mod unanimity;
