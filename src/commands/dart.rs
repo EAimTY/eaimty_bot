@@ -1,6 +1,6 @@
 use crate::Context;
 use carapax::{
-    handler, ExecuteError, HandlerResult,
+    ExecuteError, HandlerResult, handler,
     methods::SendDice,
     types::{Command, DiceKind}
 };

@@ -1,11 +1,11 @@
 use carapax::{
     Api, Config, Dispatcher,
-    session::{backend::fs::FilesystemBackend, SessionCollector, SessionManager},
-    longpoll::LongPoll
+    longpoll::LongPoll,
+    session::{backend::fs::FilesystemBackend, SessionCollector, SessionManager}
 };
-use tempfile::{tempdir, TempDir};
+use clap::{App, Arg};
 use std::time::Duration;
-use clap::{Arg, App};
+use tempfile::{TempDir, tempdir};
 
 mod commands;
 mod keywords;
@@ -22,7 +22,6 @@ async fn run(token: &str, proxy: &str) {
         config = config.proxy(proxy).expect("Failed to set proxy");
     }
     let api = Api::new(config).expect("Failed to create API");
-
     let tmpdir = tempdir().expect("Failed to create temp directory");
     let backend = FilesystemBackend::new(tmpdir.path());
     let gc_period = Duration::from_secs(3);
@@ -33,13 +32,11 @@ async fn run(token: &str, proxy: &str) {
             collector.run().await
         }
     );
-
     let mut dispatcher = Dispatcher::new(Context {
         api: api.clone(),
         session_manager: SessionManager::new(backend),
         tmpdir: tmpdir
     });
-
     dispatcher.add_handler(commands::dice::dice_command_handler);
     dispatcher.add_handler(commands::dart::dart_command_handler);
     dispatcher.add_handler(commands::ocr::ocr_command_handler);

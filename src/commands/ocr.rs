@@ -1,13 +1,13 @@
 use crate::Context;
 use carapax::{
-    handler, ExecuteError, HandlerResult,
+    ExecuteError, HandlerResult, handler,
+    methods::{AnswerCallbackQuery, EditMessageReplyMarkup, EditMessageText, GetFile, SendMessage},
     session::SessionId,
-    methods::{SendMessage, EditMessageText, EditMessageReplyMarkup, GetFile, AnswerCallbackQuery},
-    types::{Command, Update, UpdateKind, ReplyMarkup, InlineKeyboardMarkup, InlineKeyboardButtonKind, InlineKeyboardButton, CallbackQuery, MessageData}
+    types::{CallbackQuery, Command, InlineKeyboardButton, InlineKeyboardButtonKind, InlineKeyboardMarkup, MessageData, ReplyMarkup, Update, UpdateKind}
 };
-use tokio::{fs::File, io::AsyncWriteExt};
-use tokio_stream::StreamExt;
 use tesseract::ocr;
+use tokio::{fs::File, io::AsyncWriteExt, try_join};
+use tokio_stream::StreamExt;
 
 fn ocr_select_lang() -> InlineKeyboardMarkup {
     InlineKeyboardMarkup::from(vec![
@@ -45,11 +45,10 @@ pub async fn ocr_inlinekeyboard_handler(context: &Context, query: CallbackQuery)
             match data.as_str() {
                 "ocr_reselect" => {
                     session.remove("ocr_lang").await.unwrap();
-                    let method = EditMessageText::new(chat_id, message_id, "请选择 OCR 目标语言");
-                    context.api.execute(method).await?;
-                    let method = EditMessageReplyMarkup::new(chat_id, message_id)
+                    let edit_text = EditMessageText::new(chat_id, message_id, "请选择 OCR 目标语言");
+                    let edit_reply_markup = EditMessageReplyMarkup::new(chat_id, message_id)
                         .reply_markup(ocr_select_lang());
-                    context.api.execute(method).await?;
+                    try_join!(context.api.execute(edit_text), context.api.execute(edit_reply_markup))?;
                 },
                 "ocr_lang_eng" => session.set("ocr_lang", &String::from("eng")).await.unwrap(),
                 "ocr_lang_jpn" => session.set("ocr_lang", &String::from("jpn")).await.unwrap(),
@@ -59,15 +58,14 @@ pub async fn ocr_inlinekeyboard_handler(context: &Context, query: CallbackQuery)
             };
             let ocr_lang: String = session.get("ocr_lang").await.unwrap().unwrap_or(String::from(""));
             if !ocr_lang.is_empty() {
-                let method = EditMessageText::new(chat_id, message_id, String::from("目标语言：") + &ocr_lang + "\n请发送需要识别的图片（需以 Telegram 图片方式发送）");
-                context.api.execute(method).await?;
-                let method = EditMessageReplyMarkup::new(chat_id, message_id)
+                let edit_text = EditMessageText::new(chat_id, message_id, String::from("目标语言：") + &ocr_lang + "\n请发送需要识别的图片（需以 Telegram 图片方式发送）");
+                let edit_reply_markup = EditMessageReplyMarkup::new(chat_id, message_id)
                     .reply_markup(
                         InlineKeyboardMarkup::from(vec![vec![
                             InlineKeyboardButton::new("重新选择", InlineKeyboardButtonKind::CallbackData("ocr_reselect".to_string()))
                         ]])
                     );
-                context.api.execute(method).await?;
+                try_join!(context.api.execute(edit_text), context.api.execute(edit_reply_markup))?;
             }
         } else {
             let method = AnswerCallbackQuery::new(query.id).text("您不是命令发起者").show_alert(true);

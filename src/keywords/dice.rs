@@ -1,8 +1,8 @@
 use crate::Context;
 use carapax::{
-    handler, ExecuteError,
+    ExecuteError, handler,
     methods::SendDice,
-    types::{Message, DiceKind}
+    types::{DiceKind, Message}
 };
 use std::convert::Infallible;
 

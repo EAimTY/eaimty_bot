@@ -1,6 +1,6 @@
 use crate::Context;
 use carapax::{
-    handler, ExecuteError,
+    ExecuteError, handler,
     methods::SendMessage,
     types::Message
 };
