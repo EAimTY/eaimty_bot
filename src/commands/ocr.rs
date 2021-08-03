@@ -11,10 +11,10 @@ use tokio_stream::StreamExt;
 
 fn ocr_select_lang() -> InlineKeyboardMarkup {
     InlineKeyboardMarkup::from(vec![
-        vec![InlineKeyboardButton::new("English", InlineKeyboardButtonKind::CallbackData("ocr_lang_eng".to_string()))],
-        vec![InlineKeyboardButton::new("日本語", InlineKeyboardButtonKind::CallbackData("ocr_lang_jpn".to_string()))],
-        vec![InlineKeyboardButton::new("简体中文", InlineKeyboardButtonKind::CallbackData("ocr_lang_chi_sim".to_string()))],
-        vec![InlineKeyboardButton::new("繁體中文", InlineKeyboardButtonKind::CallbackData("ocr_lang_chi_tra".to_string()))]
+        vec![InlineKeyboardButton::new("English", InlineKeyboardButtonKind::CallbackData(String::from("ocr_lang_eng")))],
+        vec![InlineKeyboardButton::new("日本語", InlineKeyboardButtonKind::CallbackData(String::from("ocr_lang_jpn")))],
+        vec![InlineKeyboardButton::new("简体中文", InlineKeyboardButtonKind::CallbackData(String::from("ocr_lang_chi_sim")))],
+        vec![InlineKeyboardButton::new("繁體中文", InlineKeyboardButtonKind::CallbackData(String::from("ocr_lang_chi_tra")))]
     ])
 }
 
@@ -62,7 +62,7 @@ pub async fn ocr_inlinekeyboard_handler(context: &Context, query: CallbackQuery)
                 let edit_reply_markup = EditMessageReplyMarkup::new(chat_id, message_id)
                     .reply_markup(
                         InlineKeyboardMarkup::from(vec![vec![
-                            InlineKeyboardButton::new("重新选择", InlineKeyboardButtonKind::CallbackData("ocr_reselect".to_string()))
+                            InlineKeyboardButton::new("重新选择", InlineKeyboardButtonKind::CallbackData(String::from("ocr_reselect")))
                         ]])
                     );
                 try_join!(context.api.execute(edit_text), context.api.execute(edit_reply_markup))?;
@@ -77,44 +77,38 @@ pub async fn ocr_inlinekeyboard_handler(context: &Context, query: CallbackQuery)
 
 #[handler]
 pub async fn ocr_image_handler(context: &Context, update: Update) -> Result<HandlerResult, ExecuteError> {
-    match &update.kind {
-        UpdateKind::Message(_) => {
-            let message = update.get_message().unwrap();
-            let chat_id = message.get_chat_id();
-            let user_id = message.get_user().unwrap().id;
-            let mut session = context.session_manager.get_session(SessionId::new(chat_id, user_id)).unwrap();
-            let ocr_trigger_user: i64 = session.get("ocr_trigger_user").await.unwrap().unwrap_or(0);
-            if user_id == ocr_trigger_user {
-                let ocr_lang: String = session.get("ocr_lang").await.unwrap().unwrap_or(String::from(""));
-                if !ocr_lang.is_empty() {
-                    match &message.data {
-                        MessageData::Photo {data, ..} => {
-                            let file_id = &data.last().unwrap().file_id;
-                            let method = GetFile::new(file_id);
-                            let get_photo = context.api.execute(method).await.unwrap();
-                            let photo_path = get_photo.file_path.unwrap();
-                            let save_path = {
-                                let mut path = context.tmpdir.path().to_path_buf().join(file_id);
-                                path.set_extension("jpg");
-                                path
-                            };
-                            let mut photo = File::create(&save_path).await.unwrap();
-                            let mut stream = context.api.download_file(photo_path).await.unwrap();
-                            while let Some(chunk) = stream.next().await {
-                                photo.write_all(&chunk.unwrap()).await.unwrap();
-                            }
-                            let result = ocr(save_path.to_str().unwrap(), ocr_lang.as_str()).unwrap();
-                            let method = SendMessage::new(chat_id, result);
-                            context.api.execute(method).await?;
-                            session.remove("ocr_trigger_user").await.unwrap();
-                            session.remove("ocr_lang").await.unwrap();
-                        },
-                        _ => ()
+    if let UpdateKind::Message(_) = &update.kind {
+        let message = update.get_message().unwrap();
+        let chat_id = message.get_chat_id();
+        let user_id = message.get_user().unwrap().id;
+        let mut session = context.session_manager.get_session(SessionId::new(chat_id, user_id)).unwrap();
+        let ocr_trigger_user: i64 = session.get("ocr_trigger_user").await.unwrap().unwrap_or(0);
+        if user_id == ocr_trigger_user {
+            let ocr_lang: String = session.get("ocr_lang").await.unwrap().unwrap_or(String::from(""));
+            if !ocr_lang.is_empty() {
+                if let MessageData::Photo {data, ..} =  &message.data {
+                    let file_id = &data.last().unwrap().file_id;
+                    let method = GetFile::new(file_id);
+                    let get_photo = context.api.execute(method).await.unwrap();
+                    let photo_path = get_photo.file_path.unwrap();
+                    let save_path = {
+                        let mut path = context.tmpdir.path().to_path_buf().join(file_id);
+                        path.set_extension("jpg");
+                        path
                     };
+                    let mut photo = File::create(&save_path).await.unwrap();
+                    let mut stream = context.api.download_file(photo_path).await.unwrap();
+                    while let Some(chunk) = stream.next().await {
+                        photo.write_all(&chunk.unwrap()).await.unwrap();
+                    }
+                    let result = ocr(save_path.to_str().unwrap(), ocr_lang.as_str()).unwrap();
+                    let method = SendMessage::new(chat_id, result);
+                    context.api.execute(method).await?;
+                    session.remove("ocr_trigger_user").await.unwrap();
+                    session.remove("ocr_lang").await.unwrap();
                 }
             }
-        },
-        _ => ()
-    };
+        }
+    }
     Ok(HandlerResult::Continue)
 }

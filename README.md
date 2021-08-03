@@ -2,6 +2,21 @@
 
 个人用 Telegram Bot，使用 [Rust](https://www.rust-lang.org/) 编写，基于 [carapax](https://github.com/tg-rs/carapax)
 
+## 功能
+
+- [x] 掷飞标 - `/dart` 或文字内容包含 `飞标` - 掷一枚飞标
+- [x] 掷骰子 - `/dice` 或文字内容包含 `骰子` - 掷一枚骰子
+- [x] OCR - `/ocr` - 识别图片中文字（基于 Tesseract）
+- [x] 没有，没有，没有，通过！- 文字内容包含 `有没有`- 连续发送 3 次“没有”和 1 次“好，没有，通过！”
+- [ ] 扫雷 - `/minesweeper` - 玩扫雷
+- [ ] 黑白棋 - `/othello` - 玩黑白棋
+
+...
+
+## 依赖
+
+Leptonica、Tesseract、Tesseract 语言包（eng、jpn、chi_sim、chi_tra）
+
 ## 使用
 
     USAGE:
@@ -13,21 +28,35 @@
 
     OPTIONS:
         -p, --proxy <PROXY>    设置代理（支持：http、https、socks5）
-        -t, --token <TOKEN>    设置 Telegram Bot Token
+        -t, --token <TOKEN>    设置 Telegram Bot HTTP API Token
+        -w, --webhook <PORT>   以 webhook 模式运行，后接监听端口号
 
-## 功能
+由于 Telegram 限制，webhook 地址必须为 HTTPS 协议，所以需要使用任意 web server 作为中继，以 Nginx 为例：
 
-- [x] 掷骰子（`/dice` 或文字内容包含 `骰子`）
-- [x] 掷飞标（`/dart` 或文字内容包含 `飞标`）
-- [x] 没有，没有，没有，通过！（文字内容包含 `有没有`）
-- [x] OCR（`/ocr`）
-- [ ] 扫雷（`/minesweeper`）
+    server {
+    	listen 443 ssl http2;
+        listen [::]:443 ssl http2;
 
-...
+        # webhook callback URL 域名
+        server_name DOMAIN;
 
-## 依赖
+        # SSL 证书设置
+    	ssl_certificate      /PATH/TO/cert.pem;
+    	ssl_certificate_key  /PATH/TO/key.pem;
+        ssl_protocols        TLSv1.1 TLSv1.2 TLSv1.3;
 
-Leptonica、Tesseract、Tesseract 语言包（eng、jpn、chi_sim、chi_tra）
+        # webhook callback URL 路径
+        location /PATH {
+                proxy_redirect off;
+
+                # bot 监听地址与端口
+                proxy_pass http://127.0.0.1:PORT;
+                proxy_http_version 1.1;
+                proxy_set_header Upgrade $http_upgrade;
+                proxy_set_header Connection "upgrade";
+                proxy_set_header Host $http_host;
+        }
+    }
 
 ## 编译
 
