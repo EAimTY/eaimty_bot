@@ -31,7 +31,8 @@ Leptonica、Tesseract、Tesseract 语言包（eng、jpn、chi_sim、chi_tra）
         -t, --token <TOKEN>    设置 Telegram Bot HTTP API Token
         -w, --webhook <PORT>   以 webhook 模式运行，后接监听端口号
 
-由于 Telegram 限制，webhook 地址必须为 HTTPS 协议，所以需要使用任意 web server 作为中继，以 Nginx 为例：
+本 bot 支持 longpoll 与 webhook 两种运行方式，默认使用 longpoll
+以 webhook 模式运行时，由于 Telegram 限制，webhook 地址必须为 HTTPS 协议，所以需要使用任意 web server 作为中继，以 Nginx 为例：
 
     server {
         listen 443 ssl http2;

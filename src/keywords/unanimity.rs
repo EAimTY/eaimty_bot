@@ -1,17 +1,16 @@
-use crate::Context;
+use crate::{context::Context, error::ErrorHandler};
 use carapax::{
-    ExecuteError, handler,
+    handler,
     methods::SendMessage,
     types::Message
 };
-use std::convert::Infallible;
 
-async fn is_unanimity(_context: &Context, message: &Message) -> Result<bool, Infallible> {
+async fn is_unanimity(_context: &Context, message: &Message) -> Result<bool, ErrorHandler> {
     Ok(message.get_text().map(|text| text.data.contains("有没有")).unwrap_or(false))
 }
 
 #[handler(predicate=is_unanimity)]
-pub async fn unanimity_keyword_handler(context: &Context, message: Message) -> Result<(), ExecuteError> {
+pub async fn unanimity_keyword_handler(context: &Context, message: Message) -> Result<(), ErrorHandler> {
     let chat_id = message.get_chat_id();
     let method = SendMessage::new(chat_id, "没有");
     context.api.execute(method).await?;

@@ -1,3 +1,4 @@
+use crate::context::Context;
 use carapax::{
     Api, Config, Dispatcher, webhook,
     longpoll::LongPoll,
@@ -5,17 +6,13 @@ use carapax::{
 };
 use clap::{App, Arg};
 use std::time::Duration;
-use tempfile::{TempDir, tempdir};
+use tempfile::tempdir;
 use tokio::spawn;
 
 mod commands;
+mod context;
+mod error;
 mod keywords;
-
-pub struct Context {
-    api: Api,
-    session_manager: SessionManager<FilesystemBackend>,
-    tmpdir: TempDir
-}
 
 async fn run(token: &str, proxy: &str, webhook: &str) {
     let mut config = Config::new(token);
