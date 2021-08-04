@@ -7,7 +7,7 @@
 - [x] 掷飞标 - `/dart` 或文字内容包含 `飞标` - 掷一枚飞标
 - [x] 掷骰子 - `/dice` 或文字内容包含 `骰子` - 掷一枚骰子
 - [x] OCR - `/ocr` - 识别图片中文字（基于 Tesseract）
-- [x] 没有，没有，没有，通过！- 文字内容包含 `有没有`- 连续发送 3 次“没有”和 1 次“好，没有，通过！”
+- [x] 没有，没有，没有，通过！ - 文字内容包含 `有没有` - 连续发送 3 次“没有”和 1 次“好，没有，通过！”
 - [ ] 扫雷 - `/minesweeper` - 玩扫雷
 - [ ] 黑白棋 - `/othello` - 玩黑白棋
 
@@ -32,6 +32,7 @@ Leptonica、Tesseract、Tesseract 语言包（eng、jpn、chi_sim、chi_tra）
         -w, --webhook <PORT>   以 webhook 模式运行，后接监听端口号
 
 本 bot 支持 longpoll 与 webhook 两种运行方式，默认使用 longpoll
+
 以 webhook 模式运行时，由于 Telegram 限制，webhook 地址必须为 HTTPS 协议，所以需要使用任意 web server 作为中继，以 Nginx 为例：
 
     server {

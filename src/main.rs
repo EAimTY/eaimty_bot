@@ -9,10 +9,9 @@ use std::time::Duration;
 use tempfile::tempdir;
 use tokio::spawn;
 
-mod commands;
 mod context;
 mod error;
-mod keywords;
+mod handlers;
 
 async fn run(token: &str, proxy: &str, webhook: &str) {
     let mut config = Config::new(token);
@@ -33,14 +32,16 @@ async fn run(token: &str, proxy: &str, webhook: &str) {
         session_manager: SessionManager::new(backend),
         tmpdir: tmpdir
     });
-    dispatcher.add_handler(commands::dice::dice_command_handler);
-    dispatcher.add_handler(commands::dart::dart_command_handler);
-    dispatcher.add_handler(commands::ocr::ocr_command_handler);
-    dispatcher.add_handler(commands::ocr::ocr_inlinekeyboard_handler);
-    dispatcher.add_handler(commands::ocr::ocr_image_handler);
-    dispatcher.add_handler(keywords::dice::dice_keyword_handler);
-    dispatcher.add_handler(keywords::dart::dart_keyword_handler);
-    dispatcher.add_handler(keywords::unanimity::unanimity_keyword_handler);
+    dispatcher.add_handler(handlers::about::about_command_handler);
+    dispatcher.add_handler(handlers::agree::agree_keyword_handler);
+    dispatcher.add_handler(handlers::dart::dart_command_handler);
+    dispatcher.add_handler(handlers::dart::dart_keyword_handler);
+    dispatcher.add_handler(handlers::dice::dice_command_handler);
+    dispatcher.add_handler(handlers::dice::dice_keyword_handler);
+    dispatcher.add_handler(handlers::ocr::ocr_command_handler);
+    dispatcher.add_handler(handlers::ocr::ocr_image_handler);
+    dispatcher.add_handler(handlers::ocr::ocr_inlinekeyboard_handler);
+    dispatcher.add_handler(handlers::start::start_command_handler);
     let webhook_port = match webhook.parse::<u16>() {
         Ok(port) => port,
         Err(_) => 0
