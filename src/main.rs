@@ -42,6 +42,8 @@ async fn run(token: &str, proxy: &str, webhook: &str) {
     dispatcher.add_handler(handlers::ocr::ocr_image_handler);
     dispatcher.add_handler(handlers::ocr::ocr_inlinekeyboard_handler);
     dispatcher.add_handler(handlers::start::start_command_handler);
+    dispatcher.add_handler(handlers::tictactoe::tictactoe_command_handler);
+    dispatcher.add_handler(handlers::tictactoe::tictactoe_inlinekeyboard_handler);
     let webhook_port = match webhook.parse::<u16>() {
         Ok(port) => port,
         Err(_) => 0

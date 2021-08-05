@@ -1,4 +1,7 @@
-use carapax::{DownloadFileError, ExecuteError, session::SessionError};
+use carapax::{
+    DownloadFileError, ExecuteError,
+    session::{SessionError, SessionIdError}
+};
 use std::{convert::Infallible, error::Error, fmt, io::Error as IOError};
 use reqwest::Error as ReqwestError;
 use tesseract::TesseractError;
@@ -11,6 +14,7 @@ pub enum ErrorHandler {
     IOError(IOError),
     ReqwestError(ReqwestError),
     SessionError(SessionError),
+    SessionIdError(SessionIdError),
     TesseractError(TesseractError)
 }
 
@@ -50,6 +54,12 @@ impl From<SessionError> for ErrorHandler {
     }
 }
 
+impl From<SessionIdError> for ErrorHandler {
+    fn from(err: SessionIdError) -> Self {
+        ErrorHandler::SessionIdError(err)
+    }
+}
+
 impl From<TesseractError> for ErrorHandler {
     fn from(err: TesseractError) -> Self {
         ErrorHandler::TesseractError(err)
@@ -66,6 +76,7 @@ impl fmt::Display for ErrorHandler {
             IOError(err) => write!(out, "can not operate file: {}", err),
             ReqwestError(err) => write!(out, "failed to process request: {}", err),
             SessionError(err) => write!(out, "failed to operate session: {}", err),
+            SessionIdError(err) => write!(out, "failed to get session id: {}", err),
             TesseractError(err) => write!(out, "failed to operate ocr: {}", err)
         }
     }
@@ -81,6 +92,7 @@ impl Error for ErrorHandler {
             IOError(err) => err,
             ReqwestError(err) => err,
             SessionError(err) => err,
+            SessionIdError(err) => err,
             TesseractError(err) => err
         })
     }

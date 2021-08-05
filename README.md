@@ -8,6 +8,7 @@
 - [x] 掷骰子 - `/dice` 或文字内容包含 `骰子` - 掷一枚骰子
 - [x] OCR - `/ocr` - 识别图片中文字（基于 Tesseract）
 - [x] 没有，没有，没有，通过！ - 文字内容包含 `有没有` - 连续发送 3 次“没有”和 1 次“好，没有，通过！”
+- [x] Tic-Tac-Toe - `/tictactoe` - 玩 Tic-Tac-Toe
 - [ ] 扫雷 - `/minesweeper` - 玩扫雷
 - [ ] 黑白棋 - `/othello` - 玩黑白棋
 
