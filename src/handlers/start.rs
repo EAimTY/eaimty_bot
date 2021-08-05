@@ -11,7 +11,8 @@ pub async fn start_command_handler(context: &Context, command: Command) -> Resul
                 掷飞标 - /dart 或文字内容包含 飞标 - 掷一枚飞标\n\
                 掷骰子 - /dice 或文字内容包含 骰子 - 掷一枚骰子\n\
                 OCR - /ocr - 识别图片中文字（基于 Tesseract）\n\
-                没有，没有，没有，通过！ - 文字内容包含 “有没有” - 连续发送 3 次 “没有” 和 1 次 “好，没有，通过！”";
+                没有，没有，没有，通过！ - 文字内容包含 “有没有” - 连续发送 3 次 “没有” 和 1 次 “好，没有，通过！”\n\
+                Tic-Tac-Toe - `/tictactoe` - 玩 Tic-Tac-Toe";
     let method = SendMessage::new(chat_id, start);
     context.api.execute(method).await?;
     Ok(HandlerResult::Stop)
