@@ -6,7 +6,7 @@ pub async fn about_command_handler(context: &Context, command: Command) -> Resul
     let chat_id = command.get_message().get_chat_id();
     let about = "eaimty_bot\n\
                 \n\
-                个人用 Telegram Bot，使用 Rust 编写，基于 carapax\n\
+                个人用 Telegram Bot\n\
                 \n\
                 https://github.com/EAimTY/eaimty_bot\n\
                 \n\

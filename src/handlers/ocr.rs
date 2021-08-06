@@ -9,6 +9,11 @@ use tesseract::ocr;
 use tokio::{fs::File, io::AsyncWriteExt, try_join};
 use tokio_stream::StreamExt;
 
+struct OcrLang {
+    name: String,
+    title: String
+}
+
 fn ocr_select_lang() -> InlineKeyboardMarkup {
     InlineKeyboardMarkup::from(vec![
         vec![InlineKeyboardButton::new("English", InlineKeyboardButtonKind::CallbackData(String::from("ocr_lang_eng")))],
@@ -46,30 +51,33 @@ pub async fn ocr_inlinekeyboard_handler(context: &Context, query: CallbackQuery)
                 let message_id = message.id;
                 let data = query.data;
                 if let Some(data) = data {
+                    let mut lang: Option<OcrLang> = None;
                     match data.as_str() {
                         "ocr_reselect" => {
                             session.remove("ocr_lang").await?;
-                            let edit_text = EditMessageText::new(chat_id, message_id, "请选择 OCR 目标语言");
+                            let edit_message = EditMessageText::new(chat_id, message_id, "请选择 OCR 目标语言");
                             let edit_reply_markup = EditMessageReplyMarkup::new(chat_id, message_id)
                                 .reply_markup(ocr_select_lang());
-                            try_join!(context.api.execute(edit_text), context.api.execute(edit_reply_markup))?;
+                            let answer_callback_query = AnswerCallbackQuery::new(&query.id);
+                            try_join!(context.api.execute(edit_message), context.api.execute(edit_reply_markup), context.api.execute(answer_callback_query))?;
                         },
-                        "ocr_lang_eng" => session.set("ocr_lang", &String::from("eng")).await?,
-                        "ocr_lang_jpn" => session.set("ocr_lang", &String::from("jpn")).await?,
-                        "ocr_lang_chi_sim" => session.set("ocr_lang", &String::from("chi_sim")).await?,
-                        "ocr_lang_chi_tra" => session.set("ocr_lang", &String::from("chi_tra")).await?,
+                        "ocr_lang_eng" => lang = Some(OcrLang{name: String::from("eng"), title: String::from("English")}),
+                        "ocr_lang_jpn" => lang = Some(OcrLang{name: String::from("jpn"), title: String::from("日本語")}),
+                        "ocr_lang_chi_sim" => lang = Some(OcrLang{name: String::from("chi_sim"), title: String::from("简体中文")}),
+                        "ocr_lang_chi_tra" => lang = Some(OcrLang{name: String::from("chi_tra"), title: String::from("繁體中文")}),
                         _ => ()
                     };
-                    let ocr_lang: Option<String> = session.get("ocr_lang").await?;
-                    if let Some(ocr_lang) = ocr_lang {
-                        let edit_text = EditMessageText::new(chat_id, message_id, String::from("目标语言：") + &ocr_lang + "\n请发送需要识别的图片（需以 Telegram 图片方式发送）");
+                    if let Some(lang) = lang {
+                        session.set("ocr_lang", &lang.name).await?;
+                        let edit_message = EditMessageText::new(chat_id, message_id, String::from("目标语言：") + &lang.title + "\n请发送需要识别的图片（需以 Telegram 图片方式发送）");
                         let edit_reply_markup = EditMessageReplyMarkup::new(chat_id, message_id)
                             .reply_markup(
                                 InlineKeyboardMarkup::from(vec![vec![
                                     InlineKeyboardButton::new("重新选择", InlineKeyboardButtonKind::CallbackData(String::from("ocr_reselect")))
                                 ]])
                             );
-                        try_join!(context.api.execute(edit_text), context.api.execute(edit_reply_markup))?;
+                        let answer_callback_query = AnswerCallbackQuery::new(&query.id);
+                        try_join!(context.api.execute(edit_message), context.api.execute(edit_reply_markup), context.api.execute(answer_callback_query))?;
                     }
                 }
             } else {

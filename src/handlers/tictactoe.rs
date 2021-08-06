@@ -24,18 +24,18 @@ impl TicTacToePiece {
     }
 }
 
-enum TicTacToeCellRange {
+enum TicTacToeBoardRange {
     Part0,
     Part1,
     Part2
 }
 
-impl TicTacToeCellRange {
+impl TicTacToeBoardRange {
     fn as_usize(&self) -> usize {
         match self {
-            TicTacToeCellRange::Part0 => 0,
-            TicTacToeCellRange::Part1 => 1,
-            TicTacToeCellRange::Part2 => 2
+            TicTacToeBoardRange::Part0 => 0,
+            TicTacToeBoardRange::Part1 => 1,
+            TicTacToeBoardRange::Part2 => 2
         }
     }
 }
@@ -64,15 +64,15 @@ impl TicTacToe {
         }
     }
 
-    fn get(&self, pos: &(TicTacToeCellRange, TicTacToeCellRange)) -> TicTacToePiece {
+    fn get(&self, pos: &(TicTacToeBoardRange, TicTacToeBoardRange)) -> TicTacToePiece {
         self.data[pos.0.as_usize()][pos.1.as_usize()]
     }
 
-    fn set(&mut self, pos: &(TicTacToeCellRange, TicTacToeCellRange), piece: TicTacToePiece) {
+    fn set(&mut self, pos: &(TicTacToeBoardRange, TicTacToeBoardRange), piece: TicTacToePiece) {
         self.data[pos.0.as_usize()][pos.1.as_usize()] = piece;
     }
 
-    fn is_empty(&self, pos: &(TicTacToeCellRange, TicTacToeCellRange)) -> bool {
+    fn is_empty(&self, pos: &(TicTacToeBoardRange, TicTacToeBoardRange)) -> bool {
         if self.data[pos.0.as_usize()][pos.1.as_usize()] == TicTacToePiece::Empty {
             return true;
         }
@@ -129,43 +129,43 @@ impl TicTacToe {
         InlineKeyboardMarkup::from(vec![
             vec![
                 InlineKeyboardButton::new(
-                    self.get(&(TicTacToeCellRange::Part0, TicTacToeCellRange::Part0)).as_str(),
+                    self.get(&(TicTacToeBoardRange::Part0, TicTacToeBoardRange::Part0)).as_str(),
                     InlineKeyboardButtonKind::CallbackData(String::from("tictactoe_left_top"))
                 ),
                 InlineKeyboardButton::new(
-                    self.get(&(TicTacToeCellRange::Part1, TicTacToeCellRange::Part0)).as_str(),
+                    self.get(&(TicTacToeBoardRange::Part1, TicTacToeBoardRange::Part0)).as_str(),
                     InlineKeyboardButtonKind::CallbackData(String::from("tictactoe_middle_top"))
                 ),
                 InlineKeyboardButton::new(
-                    self.get(&(TicTacToeCellRange::Part2, TicTacToeCellRange::Part0)).as_str(),
+                    self.get(&(TicTacToeBoardRange::Part2, TicTacToeBoardRange::Part0)).as_str(),
                     InlineKeyboardButtonKind::CallbackData(String::from("tictactoe_right_top"))
                 )
             ],
             vec![
                 InlineKeyboardButton::new(
-                    self.get(&(TicTacToeCellRange::Part0, TicTacToeCellRange::Part1)).as_str(),
+                    self.get(&(TicTacToeBoardRange::Part0, TicTacToeBoardRange::Part1)).as_str(),
                     InlineKeyboardButtonKind::CallbackData(String::from("tictactoe_left_middle"))
                 ),
                 InlineKeyboardButton::new(
-                    self.get(&(TicTacToeCellRange::Part1, TicTacToeCellRange::Part1)).as_str(),
+                    self.get(&(TicTacToeBoardRange::Part1, TicTacToeBoardRange::Part1)).as_str(),
                     InlineKeyboardButtonKind::CallbackData(String::from("tictactoe_middle_middle"))
                 ),
                 InlineKeyboardButton::new(
-                    self.get(&(TicTacToeCellRange::Part2, TicTacToeCellRange::Part1)).as_str(),
+                    self.get(&(TicTacToeBoardRange::Part2, TicTacToeBoardRange::Part1)).as_str(),
                     InlineKeyboardButtonKind::CallbackData(String::from("tictactoe_right_middle"))
                 )
             ],
             vec![
                 InlineKeyboardButton::new(
-                    self.get(&(TicTacToeCellRange::Part0, TicTacToeCellRange::Part2)).as_str(),
+                    self.get(&(TicTacToeBoardRange::Part0, TicTacToeBoardRange::Part2)).as_str(),
                     InlineKeyboardButtonKind::CallbackData(String::from("tictactoe_left_bottom"))
                 ),
                 InlineKeyboardButton::new(
-                    self.get(&(TicTacToeCellRange::Part1, TicTacToeCellRange::Part2)).as_str(),
+                    self.get(&(TicTacToeBoardRange::Part1, TicTacToeBoardRange::Part2)).as_str(),
                     InlineKeyboardButtonKind::CallbackData(String::from("tictactoe_middle_bottom"))
                 ),
                 InlineKeyboardButton::new(
-                    self.get(&(TicTacToeCellRange::Part2, TicTacToeCellRange::Part2)).as_str(),
+                    self.get(&(TicTacToeBoardRange::Part2, TicTacToeBoardRange::Part2)).as_str(),
                     InlineKeyboardButtonKind::CallbackData(String::from("tictactoe_right_bottom"))
                 )
             ]
@@ -218,16 +218,16 @@ pub async fn tictactoe_command_handler(context: &Context, command: Command) -> R
 pub async fn tictactoe_inlinekeyboard_handler(context: &Context, query: CallbackQuery) -> Result<HandlerResult, ErrorHandler> {
     let data = query.data;
     if let Some(data) = data {
-        let cell: Option<(TicTacToeCellRange, TicTacToeCellRange)> = match data.as_str() {
-            "tictactoe_left_top" => Some((TicTacToeCellRange::Part0, TicTacToeCellRange::Part0)),
-            "tictactoe_left_middle" => Some((TicTacToeCellRange::Part0, TicTacToeCellRange::Part1)),
-            "tictactoe_left_bottom" => Some((TicTacToeCellRange::Part0, TicTacToeCellRange::Part2)),
-            "tictactoe_middle_top" => Some((TicTacToeCellRange::Part1, TicTacToeCellRange::Part0)),
-            "tictactoe_middle_middle" => Some((TicTacToeCellRange::Part1, TicTacToeCellRange::Part1)),
-            "tictactoe_middle_bottom" => Some((TicTacToeCellRange::Part1, TicTacToeCellRange::Part2)),
-            "tictactoe_right_top" => Some((TicTacToeCellRange::Part2, TicTacToeCellRange::Part0)),
-            "tictactoe_right_middle" => Some((TicTacToeCellRange::Part2, TicTacToeCellRange::Part1)),
-            "tictactoe_right_bottom" => Some((TicTacToeCellRange::Part2, TicTacToeCellRange::Part2)),
+        let cell: Option<(TicTacToeBoardRange, TicTacToeBoardRange)> = match data.as_str() {
+            "tictactoe_left_top" => Some((TicTacToeBoardRange::Part0, TicTacToeBoardRange::Part0)),
+            "tictactoe_left_middle" => Some((TicTacToeBoardRange::Part0, TicTacToeBoardRange::Part1)),
+            "tictactoe_left_bottom" => Some((TicTacToeBoardRange::Part0, TicTacToeBoardRange::Part2)),
+            "tictactoe_middle_top" => Some((TicTacToeBoardRange::Part1, TicTacToeBoardRange::Part0)),
+            "tictactoe_middle_middle" => Some((TicTacToeBoardRange::Part1, TicTacToeBoardRange::Part1)),
+            "tictactoe_middle_bottom" => Some((TicTacToeBoardRange::Part1, TicTacToeBoardRange::Part2)),
+            "tictactoe_right_top" => Some((TicTacToeBoardRange::Part2, TicTacToeBoardRange::Part0)),
+            "tictactoe_right_middle" => Some((TicTacToeBoardRange::Part2, TicTacToeBoardRange::Part1)),
+            "tictactoe_right_bottom" => Some((TicTacToeBoardRange::Part2, TicTacToeBoardRange::Part2)),
             _ => None
         };
         if let Some(cell) = cell {
@@ -347,7 +347,7 @@ pub async fn tictactoe_inlinekeyboard_handler(context: &Context, query: Callback
                         &String::from("\n") +
                         &tictactoe.print() +
                         &user.username.unwrap_or(String::from("")) +
-                        &String::from("赢了")
+                        &String::from(" 赢了")
                     );
                     context.api.execute(method).await?;
                 }
