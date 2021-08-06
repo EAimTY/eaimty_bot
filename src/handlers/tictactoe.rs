@@ -2,7 +2,7 @@ use crate::{context::Context, error::ErrorHandler};
 use carapax::{
     handler, HandlerResult,
     methods::{AnswerCallbackQuery, EditMessageReplyMarkup, EditMessageText, SendMessage},
-    types::{CallbackQuery, Command, InlineKeyboardButton, InlineKeyboardButtonKind, InlineKeyboardMarkup, MessageData, ReplyMarkup}
+    types::{CallbackQuery, Command, InlineKeyboardButton, InlineKeyboardButtonKind, InlineKeyboardMarkup, ReplyMarkup, User}
 };
 use serde::{Deserialize, Serialize};
 use tokio::try_join;
@@ -44,8 +44,8 @@ impl TicTacToeCellRange {
 struct TicTacToe {
     data: [[TicTacToePiece; 3]; 3],
     next: TicTacToePiece,
-    player_cross: Option<i64>,
-    player_nought: Option<i64>
+    player_cross: Option<User>,
+    player_nought: Option<User>
 }
 
 impl TicTacToe {
@@ -147,15 +147,33 @@ impl TicTacToe {
         ])
     }
 
+    fn print_players(&self) -> String {
+        let mut players = String::new();
+        if let Some(player_cross) = &self.player_cross {
+            players.push_str("❌：");
+            if let Some(username) = &player_cross.username {
+                players += &username;
+            }
+            if let Some(player_nought) = &self.player_nought {
+                players.push_str("\n⭕️：");
+                if let Some(username) = &player_nought.username {
+                    players += &username;
+                }
+            }
+        }
+        players
+    }
+
     fn print(&self) -> String {
-        let mut print = String::new();
+        let mut board = String::from("\n");
         for col in 0..3 {
             for row in 0..3 {
-                print.push_str(self.data[row][col].as_str());
+                board.push_str(self.data[row][col].as_str());
             }
-            print.push_str("\n");
+            board.push_str("\n");
         }
-        print
+        board.push_str("\n");
+        board
     }
 }
 
@@ -201,16 +219,14 @@ pub async fn tictactoe_inlinekeyboard_handler(context: &Context, query: Callback
                 let mut session = context.session_manager.get_session(&message)?;
                 let mut tictactoe = session.get("tictactoe").await?.unwrap_or(TicTacToe::new());
                 let chat_id = message.get_chat_id();
-                let user_id = query.from.id;
-                let user_name = query.from.username.unwrap_or(String::from(""));
+                let user = query.from;
                 let message_id = message.id;
-                let original_message = if let MessageData::Text(text) = message.data { text.data } else { String::from("") };
                 let mut edit_message: Option<EditMessageText> = None;
                 match tictactoe.next {
                     TicTacToePiece::Cross => {
-                        match tictactoe.player_cross {
+                        match &tictactoe.player_cross {
                             Some(player_cross) => {
-                                if user_id == player_cross {
+                                if &user == player_cross {
                                     if tictactoe.is_empty(&cell) {
                                         tictactoe.set(&cell, TicTacToePiece::Cross);
                                         tictactoe.next();
@@ -223,14 +239,13 @@ pub async fn tictactoe_inlinekeyboard_handler(context: &Context, query: Callback
                             },
                             None => {
                                 if tictactoe.is_empty(&cell) {
-                                    edit_message = Some(EditMessageText::new(
-                                        chat_id,
-                                        message_id,
-                                        original_message.clone() + "\n❌：" + &user_name)
-                                    );
-                                    tictactoe.player_cross = Some(user_id);
+                                    tictactoe.player_cross = Some(user.clone());
                                     tictactoe.set(&cell, TicTacToePiece::Cross);
                                     tictactoe.next();
+                                    edit_message = Some(EditMessageText::new(
+                                        chat_id, message_id,
+                                        String::from("Tic-Tac-Toe\n") + &tictactoe.print_players()
+                                    ));
                                 } else {
                                     tictactoe_answer_query(context, query.id, "请在空白处落子", true).await?;
                                 }
@@ -238,9 +253,9 @@ pub async fn tictactoe_inlinekeyboard_handler(context: &Context, query: Callback
                         }
                     },
                     TicTacToePiece::Nought => {
-                        match tictactoe.player_nought {
+                        match &tictactoe.player_nought {
                             Some(player_nought) => {
-                                if user_id == player_nought {
+                                if &user == player_nought {
                                     if tictactoe.is_empty(&cell) {
                                         tictactoe.set(&cell, TicTacToePiece::Nought);
                                         tictactoe.next();
@@ -253,14 +268,13 @@ pub async fn tictactoe_inlinekeyboard_handler(context: &Context, query: Callback
                             },
                             None => {
                                 if tictactoe.is_empty(&cell) {
-                                    edit_message = Some(EditMessageText::new(
-                                        chat_id,
-                                        message_id,
-                                        original_message.clone() + "\n⭕️：" + &user_name)
-                                    );
-                                    tictactoe.player_nought = Some(user_id);
+                                    tictactoe.player_nought = Some(user.clone());
                                     tictactoe.set(&cell, TicTacToePiece::Nought);
                                     tictactoe.next();
+                                    edit_message = Some(EditMessageText::new(
+                                        chat_id, message_id,
+                                        String::from("Tic-Tac-Toe\n") + &tictactoe.print_players()
+                                    ));
                                 } else {
                                     tictactoe_answer_query(context, query.id, "请在空白处落子", true).await?;
                                 }
@@ -272,9 +286,13 @@ pub async fn tictactoe_inlinekeyboard_handler(context: &Context, query: Callback
                 if tictactoe.is_game_over() {
                     session.remove("tictactoe").await?;
                     let method = EditMessageText::new(
-                        chat_id,
-                        message_id,
-                        original_message.clone() + "\n\n" + &tictactoe.print() + "\n" + &user_name + " 赢了"
+                        chat_id, message_id,
+                        String::from("Tic-Tac-Toe\n") +
+                        &tictactoe.print_players() +
+                        &String::from("\n") +
+                        &tictactoe.print() +
+                        &user.username.unwrap_or(String::from("")) +
+                        &String::from("赢了")
                     );
                     context.api.execute(method).await?;
                 } else {
