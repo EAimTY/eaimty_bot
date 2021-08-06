@@ -40,6 +40,12 @@ impl TicTacToeCellRange {
     }
 }
 
+enum TicTacToeGameState {
+    OnGoing,
+    Tie,
+    Win
+}
+
 #[derive (Serialize, Deserialize)]
 struct TicTacToe {
     data: [[TicTacToePiece; 3]; 3],
@@ -80,24 +86,43 @@ impl TicTacToe {
         }
     }
 
-    fn is_game_over(&self) -> bool {
+    fn is_ended(&self) -> TicTacToeGameState {
         for row in 0..3 {
-            if self.data[row][0] != TicTacToePiece::Empty && self.data[row][0] == self.data[row][1] && self.data[row][0] == self.data[row][2] {
-                return true;
+            if
+                self.data[row][0] != TicTacToePiece::Empty &&
+                self.data[row][0] == self.data[row][1] &&
+                self.data[row][0] == self.data[row][2]
+            {
+                return TicTacToeGameState::Win;
             }
         }
         for col in 0..3 {
-            if self.data[0][col] != TicTacToePiece::Empty && self.data[0][col] == self.data[1][col] && self.data[0][col] == self.data[2][col] {
-                return true;
+            if
+                self.data[0][col] != TicTacToePiece::Empty &&
+                self.data[0][col] == self.data[1][col] &&
+                self.data[0][col] == self.data[2][col]
+            {
+                return TicTacToeGameState::Win;
             }
         }
         if
             (self.data[0][0] != TicTacToePiece::Empty && self.data[0][0] == self.data[1][1] && self.data[0][0] == self.data[2][2]) ||
             (self.data[0][2] != TicTacToePiece::Empty && self.data[0][2] == self.data[1][1] && self.data[0][2] == self.data[2][0])
         {
-            return true;
+            return TicTacToeGameState::Win;
         }
-        false
+        let mut is_full = true;
+        for row in 0..3 {
+            for col in 0..3 {
+                if self.data[row][col] == TicTacToePiece::Empty {
+                    is_full = false;
+                }
+            }
+        }
+        if is_full {
+            return TicTacToeGameState::Tie;
+        }
+        TicTacToeGameState::OnGoing
     }
 
     fn get_inline_keyboard(&self) -> InlineKeyboardMarkup {
@@ -287,29 +312,44 @@ pub async fn tictactoe_inlinekeyboard_handler(context: &Context, query: Callback
                     context.api.execute(method).await?;
                 }
             }
-            if tictactoe.is_game_over() {
-                session.remove("tictactoe").await?;
-                let method = EditMessageText::new(
-                    chat_id, message_id,
-                    String::from("Tic-Tac-Toe\n") +
-                    &tictactoe.print_players() +
-                    &String::from("\n") +
-                    &tictactoe.print() +
-                    &user.username.unwrap_or(String::from("")) +
-                    &String::from("赢了")
-                );
-                context.api.execute(method).await?;
-            } else {
-                session.set("tictactoe", &tictactoe).await?;
-                let edit_reply_markup = EditMessageReplyMarkup::new(chat_id, message_id)
-                    .reply_markup(tictactoe.get_inline_keyboard());
-                match edit_message {
-                    Some(edit_message) => {
-                        try_join!(context.api.execute(edit_message), context.api.execute(edit_reply_markup))?;
-                    },
-                    None => {
-                        context.api.execute(edit_reply_markup).await?;
+            match tictactoe.is_ended() {
+                TicTacToeGameState::OnGoing => {
+                    session.set("tictactoe", &tictactoe).await?;
+                    let edit_reply_markup = EditMessageReplyMarkup::new(chat_id, message_id)
+                        .reply_markup(tictactoe.get_inline_keyboard());
+                    match edit_message {
+                        Some(edit_message) => {
+                            try_join!(context.api.execute(edit_message), context.api.execute(edit_reply_markup))?;
+                        },
+                        None => {
+                            context.api.execute(edit_reply_markup).await?;
+                        }
                     }
+                },
+                TicTacToeGameState::Tie => {
+                    session.remove("tictactoe").await?;
+                    let method = EditMessageText::new(
+                        chat_id, message_id,
+                        String::from("Tic-Tac-Toe\n") +
+                        &tictactoe.print_players() +
+                        &String::from("\n") +
+                        &tictactoe.print() +
+                        &String::from("平局")
+                    );
+                    context.api.execute(method).await?;
+                },
+                TicTacToeGameState::Win => {
+                    session.remove("tictactoe").await?;
+                    let method = EditMessageText::new(
+                        chat_id, message_id,
+                        String::from("Tic-Tac-Toe\n") +
+                        &tictactoe.print_players() +
+                        &String::from("\n") +
+                        &tictactoe.print() +
+                        &user.username.unwrap_or(String::from("")) +
+                        &String::from("赢了")
+                    );
+                    context.api.execute(method).await?;
                 }
             }
         }
