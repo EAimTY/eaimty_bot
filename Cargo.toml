@@ -1,6 +1,6 @@
 [package]
 name = "eaimty_bot"
-description = "个人用 Telegram Bot，使用 Rust 编写，基于 carapax"
+description = "个人用 Telegram Bot"
 version = "0.4.1"
 authors = ["EAimTY <ea.imty@gmail.com>"]
 edition = "2018"

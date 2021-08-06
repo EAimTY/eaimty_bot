@@ -44,16 +44,13 @@ async fn run(token: &str, proxy: &str, webhook: &str) {
     dispatcher.add_handler(handlers::start::start_command_handler);
     dispatcher.add_handler(handlers::tictactoe::tictactoe_command_handler);
     dispatcher.add_handler(handlers::tictactoe::tictactoe_inlinekeyboard_handler);
-    let webhook_port = match webhook.parse::<u16>() {
-        Ok(port) => port,
-        Err(_) => 0
-    };
+    let webhook_port = webhook.parse::<u16>().unwrap_or(0);
     if webhook_port == 0 {
-        println!("Running in longpoll mode");
         LongPoll::new(api, dispatcher).run().await;
+        println!("Running in longpoll mode");
     } else {
-        println!("Running at port {} in webhook mode", webhook_port);
         webhook::run_server(([127, 0, 0, 1], webhook_port), "/", dispatcher).await.expect("Failed to run webhook server");
+        println!("Running at port {} in webhook mode", webhook_port);
     }
 }
 

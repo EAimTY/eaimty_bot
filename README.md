@@ -1,6 +1,6 @@
 # eaimty_bot
 
-个人用 Telegram Bot，使用 [Rust](https://www.rust-lang.org/) 编写，基于 [carapax](https://github.com/tg-rs/carapax)
+个人用 Telegram Bot
 
 ## 功能
 

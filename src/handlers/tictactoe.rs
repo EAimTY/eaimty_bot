@@ -66,6 +66,13 @@ impl TicTacToe {
         self.data[pos.0.as_usize()][pos.1.as_usize()] = piece;
     }
 
+    fn is_empty(&self, pos: &(TicTacToeCellRange, TicTacToeCellRange)) -> bool {
+        if self.data[pos.0.as_usize()][pos.1.as_usize()] == TicTacToePiece::Empty {
+            return true;
+        }
+        false
+    }
+
     fn next(&mut self){
         self.next = match self.next {
             TicTacToePiece::Cross => TicTacToePiece::Nought,
@@ -73,7 +80,7 @@ impl TicTacToe {
         }
     }
 
-    fn check(&self) -> bool {
+    fn is_game_over(&self) -> bool {
         for row in 0..3 {
             if self.data[row][0] != TicTacToePiece::Empty && self.data[row][0] == self.data[row][1] && self.data[row][0] == self.data[row][2] {
                 return true;
@@ -152,6 +159,14 @@ impl TicTacToe {
     }
 }
 
+async fn tictactoe_answer_query(context: &Context, query_id: String, message: &str, show_alert: bool) -> Result<(), ErrorHandler> {
+    let method = AnswerCallbackQuery::new(query_id)
+        .text(message)
+        .show_alert(show_alert);
+    context.api.execute(method).await?;
+    Ok(())
+}
+
 #[handler(command = "/tictactoe")]
 pub async fn tictactoe_command_handler(context: &Context, command: Command) -> Result<HandlerResult, ErrorHandler> {
     let message = command.get_message();
@@ -196,24 +211,29 @@ pub async fn tictactoe_inlinekeyboard_handler(context: &Context, query: Callback
                         match tictactoe.player_cross {
                             Some(player_cross) => {
                                 if user_id == player_cross {
-                                    tictactoe.set(&cell, TicTacToePiece::Cross);
-                                    tictactoe.next();
+                                    if tictactoe.is_empty(&cell) {
+                                        tictactoe.set(&cell, TicTacToePiece::Cross);
+                                        tictactoe.next();
+                                    } else {
+                                        tictactoe_answer_query(context, query.id, "请在空白处落子", true).await?;
+                                    }
                                 } else {
-                                    let method = AnswerCallbackQuery::new(query.id)
-                                        .text("不是您的回合")
-                                        .show_alert(true);
-                                    context.api.execute(method).await?;
+                                    tictactoe_answer_query(context, query.id, "不是您的回合", true).await?;
                                 }
                             },
                             None => {
-                                edit_message = Some(EditMessageText::new(
-                                    chat_id,
-                                    message_id,
-                                    original_message.clone() + "\n❌：" + &user_name)
-                                );
-                                tictactoe.player_cross = Some(user_id);
-                                tictactoe.set(&cell, TicTacToePiece::Cross);
-                                tictactoe.next();
+                                if tictactoe.is_empty(&cell) {
+                                    edit_message = Some(EditMessageText::new(
+                                        chat_id,
+                                        message_id,
+                                        original_message.clone() + "\n❌：" + &user_name)
+                                    );
+                                    tictactoe.player_cross = Some(user_id);
+                                    tictactoe.set(&cell, TicTacToePiece::Cross);
+                                    tictactoe.next();
+                                } else {
+                                    tictactoe_answer_query(context, query.id, "请在空白处落子", true).await?;
+                                }
                             }
                         }
                     },
@@ -221,30 +241,35 @@ pub async fn tictactoe_inlinekeyboard_handler(context: &Context, query: Callback
                         match tictactoe.player_nought {
                             Some(player_nought) => {
                                 if user_id == player_nought {
-                                    tictactoe.set(&cell, TicTacToePiece::Nought);
-                                    tictactoe.next();
+                                    if tictactoe.is_empty(&cell) {
+                                        tictactoe.set(&cell, TicTacToePiece::Nought);
+                                        tictactoe.next();
+                                    } else {
+                                        tictactoe_answer_query(context, query.id, "请在空白处落子", true).await?;
+                                    }
                                 } else {
-                                    let method = AnswerCallbackQuery::new(query.id)
-                                        .text("不是您的回合")
-                                        .show_alert(true);
-                                    context.api.execute(method).await?;
+                                    tictactoe_answer_query(context, query.id, "不是您的回合", true).await?;
                                 }
                             },
                             None => {
-                                edit_message = Some(EditMessageText::new(
-                                    chat_id,
-                                    message_id,
-                                    original_message.clone() + "\n⭕️：" + &user_name)
-                                );
-                                tictactoe.player_nought = Some(user_id);
-                                tictactoe.set(&cell, TicTacToePiece::Nought);
-                                tictactoe.next();
+                                if tictactoe.is_empty(&cell) {
+                                    edit_message = Some(EditMessageText::new(
+                                        chat_id,
+                                        message_id,
+                                        original_message.clone() + "\n⭕️：" + &user_name)
+                                    );
+                                    tictactoe.player_nought = Some(user_id);
+                                    tictactoe.set(&cell, TicTacToePiece::Nought);
+                                    tictactoe.next();
+                                } else {
+                                    tictactoe_answer_query(context, query.id, "请在空白处落子", true).await?;
+                                }
                             }
                         }
                     },
                     _ => ()
                 }
-                if tictactoe.check() {
+                if tictactoe.is_game_over() {
                     session.remove("tictactoe").await?;
                     let method = EditMessageText::new(
                         chat_id,
