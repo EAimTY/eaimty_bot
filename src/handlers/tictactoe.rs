@@ -25,22 +25,6 @@ impl TicTacToePiece {
     }
 }
 
-enum TicTacToeBoardRange {
-    Part0,
-    Part1,
-    Part2
-}
-
-impl TicTacToeBoardRange {
-    fn as_usize(&self) -> usize {
-        match self {
-            TicTacToeBoardRange::Part0 => 0,
-            TicTacToeBoardRange::Part1 => 1,
-            TicTacToeBoardRange::Part2 => 2
-        }
-    }
-}
-
 enum TicTacToeGameState {
     OnGoing,
     Tie,
@@ -67,16 +51,13 @@ impl TicTacToe {
         }
     }
 
-    fn get(&self, pos: &(TicTacToeBoardRange, TicTacToeBoardRange)) -> TicTacToePiece {
-        self.data[pos.0.as_usize()][pos.1.as_usize()]
+    fn get(&self, pos: &(usize, usize)) -> TicTacToePiece {
+        self.data[pos.0][pos.1]
     }
 
-    fn set(&mut self, pos: &(TicTacToeBoardRange, TicTacToeBoardRange), piece: TicTacToePiece) {
-        self.data[pos.0.as_usize()][pos.1.as_usize()] = piece;
-    }
-
-    fn is_empty(&self, pos: &(TicTacToeBoardRange, TicTacToeBoardRange)) -> bool {
-        if self.data[pos.0.as_usize()][pos.1.as_usize()] == TicTacToePiece::Empty {
+    fn set(&mut self, pos: &(usize, usize), piece: TicTacToePiece) -> bool {
+        if self.get(&(pos.0, pos.1)) == TicTacToePiece::Empty {
+            self.data[pos.0][pos.1] = piece;
             return true;
         }
         false
@@ -86,38 +67,38 @@ impl TicTacToe {
         self.next = match self.next {
             TicTacToePiece::Cross => TicTacToePiece::Nought,
             _ => TicTacToePiece::Cross
-        }
+        };
     }
 
     fn is_ended(&self) -> TicTacToeGameState {
         for row in 0..3 {
             if
-                self.data[row][0] != TicTacToePiece::Empty &&
-                self.data[row][0] == self.data[row][1] &&
-                self.data[row][0] == self.data[row][2]
+                self.get(&(row, 0)) != TicTacToePiece::Empty &&
+                self.get(&(row, 0)) == self.get(&(row, 1)) &&
+                self.get(&(row, 0)) == self.get(&(row, 2))
             {
                 return TicTacToeGameState::Win;
             }
         }
         for col in 0..3 {
             if
-                self.data[0][col] != TicTacToePiece::Empty &&
-                self.data[0][col] == self.data[1][col] &&
-                self.data[0][col] == self.data[2][col]
+                self.get(&(0, col)) != TicTacToePiece::Empty &&
+                self.get(&(0, col)) == self.get(&(1, col)) &&
+                self.get(&(0, col)) == self.get(&(2, col))
             {
                 return TicTacToeGameState::Win;
             }
         }
         if
-            (self.data[0][0] != TicTacToePiece::Empty && self.data[0][0] == self.data[1][1] && self.data[0][0] == self.data[2][2]) ||
-            (self.data[0][2] != TicTacToePiece::Empty && self.data[0][2] == self.data[1][1] && self.data[0][2] == self.data[2][0])
+            (self.get(&(0, 0)) != TicTacToePiece::Empty && self.get(&(0, 0)) == self.get(&(1, 1)) && self.get(&(0, 0)) == self.get(&(2, 2))) ||
+            (self.get(&(0, 2)) != TicTacToePiece::Empty && self.get(&(0, 2)) == self.get(&(1, 1)) && self.get(&(0, 2)) == self.get(&(2, 0)))
         {
             return TicTacToeGameState::Win;
         }
         let mut is_full = true;
         for row in 0..3 {
             for col in 0..3 {
-                if self.data[row][col] == TicTacToePiece::Empty {
+                if self.get(&(row, col)) == TicTacToePiece::Empty {
                     is_full = false;
                 }
             }
@@ -129,50 +110,20 @@ impl TicTacToe {
     }
 
     fn get_inline_keyboard(&self) -> InlineKeyboardMarkup {
-        InlineKeyboardMarkup::from(vec![
-            vec![
-                InlineKeyboardButton::new(
-                    self.get(&(TicTacToeBoardRange::Part0, TicTacToeBoardRange::Part0)).as_str(),
-                    InlineKeyboardButtonKind::CallbackData(String::from("tictactoe_left_top"))
-                ),
-                InlineKeyboardButton::new(
-                    self.get(&(TicTacToeBoardRange::Part1, TicTacToeBoardRange::Part0)).as_str(),
-                    InlineKeyboardButtonKind::CallbackData(String::from("tictactoe_middle_top"))
-                ),
-                InlineKeyboardButton::new(
-                    self.get(&(TicTacToeBoardRange::Part2, TicTacToeBoardRange::Part0)).as_str(),
-                    InlineKeyboardButtonKind::CallbackData(String::from("tictactoe_right_top"))
-                )
-            ],
-            vec![
-                InlineKeyboardButton::new(
-                    self.get(&(TicTacToeBoardRange::Part0, TicTacToeBoardRange::Part1)).as_str(),
-                    InlineKeyboardButtonKind::CallbackData(String::from("tictactoe_left_middle"))
-                ),
-                InlineKeyboardButton::new(
-                    self.get(&(TicTacToeBoardRange::Part1, TicTacToeBoardRange::Part1)).as_str(),
-                    InlineKeyboardButtonKind::CallbackData(String::from("tictactoe_middle_middle"))
-                ),
-                InlineKeyboardButton::new(
-                    self.get(&(TicTacToeBoardRange::Part2, TicTacToeBoardRange::Part1)).as_str(),
-                    InlineKeyboardButtonKind::CallbackData(String::from("tictactoe_right_middle"))
-                )
-            ],
-            vec![
-                InlineKeyboardButton::new(
-                    self.get(&(TicTacToeBoardRange::Part0, TicTacToeBoardRange::Part2)).as_str(),
-                    InlineKeyboardButtonKind::CallbackData(String::from("tictactoe_left_bottom"))
-                ),
-                InlineKeyboardButton::new(
-                    self.get(&(TicTacToeBoardRange::Part1, TicTacToeBoardRange::Part2)).as_str(),
-                    InlineKeyboardButtonKind::CallbackData(String::from("tictactoe_middle_bottom"))
-                ),
-                InlineKeyboardButton::new(
-                    self.get(&(TicTacToeBoardRange::Part2, TicTacToeBoardRange::Part2)).as_str(),
-                    InlineKeyboardButtonKind::CallbackData(String::from("tictactoe_right_bottom"))
-                )
-            ]
-        ])
+        let mut keyboad: Vec<Vec<InlineKeyboardButton>> = Vec::new();
+        for col in 0..3 {
+            let mut keyboad_col: Vec<InlineKeyboardButton> = Vec::new();
+            for row in 0..3 {
+                keyboad_col.push(
+                    InlineKeyboardButton::new(
+                        self.get(&(row, col)).as_str(),
+                        InlineKeyboardButtonKind::CallbackData(String::from("tictactoe_") + &row.to_string() + "_" + &col.to_string())
+                    )
+                );
+            }
+            keyboad.push(keyboad_col);
+        }
+        InlineKeyboardMarkup::from(keyboad)
     }
 
     fn print_players(&self) -> String {
@@ -237,16 +188,16 @@ pub async fn tictactoe_command_handler(context: &Context, command: Command) -> R
 pub async fn tictactoe_inlinekeyboard_handler(context: &Context, query: CallbackQuery) -> Result<HandlerResult, ErrorHandler> {
     let data = query.data;
     if let Some(data) = data {
-        let cell: Option<(TicTacToeBoardRange, TicTacToeBoardRange)> = match data.as_str() {
-            "tictactoe_left_top" => Some((TicTacToeBoardRange::Part0, TicTacToeBoardRange::Part0)),
-            "tictactoe_left_middle" => Some((TicTacToeBoardRange::Part0, TicTacToeBoardRange::Part1)),
-            "tictactoe_left_bottom" => Some((TicTacToeBoardRange::Part0, TicTacToeBoardRange::Part2)),
-            "tictactoe_middle_top" => Some((TicTacToeBoardRange::Part1, TicTacToeBoardRange::Part0)),
-            "tictactoe_middle_middle" => Some((TicTacToeBoardRange::Part1, TicTacToeBoardRange::Part1)),
-            "tictactoe_middle_bottom" => Some((TicTacToeBoardRange::Part1, TicTacToeBoardRange::Part2)),
-            "tictactoe_right_top" => Some((TicTacToeBoardRange::Part2, TicTacToeBoardRange::Part0)),
-            "tictactoe_right_middle" => Some((TicTacToeBoardRange::Part2, TicTacToeBoardRange::Part1)),
-            "tictactoe_right_bottom" => Some((TicTacToeBoardRange::Part2, TicTacToeBoardRange::Part2)),
+        let cell: Option<(usize, usize)> = match data.as_str() {
+            "tictactoe_0_0" => Some((0, 0)),
+            "tictactoe_0_1" => Some((0, 1)),
+            "tictactoe_0_2" => Some((0, 2)),
+            "tictactoe_1_0" => Some((1, 0)),
+            "tictactoe_1_1" => Some((1, 1)),
+            "tictactoe_1_2" => Some((1, 2)),
+            "tictactoe_2_0" => Some((2, 0)),
+            "tictactoe_2_1" => Some((2, 1)),
+            "tictactoe_2_2" => Some((2, 2)),
             _ => None
         };
         if let Some(cell) = cell {
@@ -256,18 +207,17 @@ pub async fn tictactoe_inlinekeyboard_handler(context: &Context, query: Callback
             if let Some(message_author) = message.get_user() {
                 let user = query.from;
                 let mut session = context.session_manager.get_session(SessionId::new(chat_id, message_author.id))?;
-                let mut tictactoe_vec = session.get("tictactoe_vec").await?.unwrap_or(Vec::new());
-                let index = tictactoe_vec.get_index(message_id);
+                let mut tictactoe = session.get("tictactoe").await?.unwrap_or(Vec::new());
+                let index = tictactoe.get_index(message_id);
                 let mut edit_message: Option<EditMessageText> = None;
                 let mut answer_callback_query: Option<&str> = None;
-                match tictactoe_vec[index].next {
+                match tictactoe[index].next {
                     TicTacToePiece::Cross => {
-                        match &tictactoe_vec[index].player_cross {
+                        match &tictactoe[index].player_cross {
                             Some(player_cross) => {
                                 if &user == player_cross {
-                                    if tictactoe_vec[index].is_empty(&cell) {
-                                        tictactoe_vec[index].set(&cell, TicTacToePiece::Cross);
-                                        tictactoe_vec[index].next();
+                                    if tictactoe[index].set(&cell, TicTacToePiece::Cross) {
+                                        tictactoe[index].next();
                                     } else {
                                         answer_callback_query = Some("请在空白处落子");
                                     }
@@ -276,13 +226,12 @@ pub async fn tictactoe_inlinekeyboard_handler(context: &Context, query: Callback
                                 }
                             },
                             None => {
-                                if tictactoe_vec[index].is_empty(&cell) {
-                                    tictactoe_vec[index].player_cross = Some(user.clone());
-                                    tictactoe_vec[index].set(&cell, TicTacToePiece::Cross);
-                                    tictactoe_vec[index].next();
+                                if tictactoe[index].set(&cell, TicTacToePiece::Cross) {
+                                    tictactoe[index].player_cross = Some(user.clone());
+                                    tictactoe[index].next();
                                     edit_message = Some(EditMessageText::new(
                                         chat_id, message_id,
-                                        String::from("Tic-Tac-Toe\n") + &tictactoe_vec[index].print_players()
+                                        String::from("Tic-Tac-Toe\n") + &tictactoe[index].print_players()
                                     ));
                                 } else {
                                     answer_callback_query = Some("请在空白处落子");
@@ -291,12 +240,11 @@ pub async fn tictactoe_inlinekeyboard_handler(context: &Context, query: Callback
                         }
                     },
                     TicTacToePiece::Nought => {
-                        match &tictactoe_vec[index].player_nought {
+                        match &tictactoe[index].player_nought {
                             Some(player_nought) => {
                                 if &user == player_nought {
-                                    if tictactoe_vec[index].is_empty(&cell) {
-                                        tictactoe_vec[index].set(&cell, TicTacToePiece::Nought);
-                                        tictactoe_vec[index].next();
+                                    if tictactoe[index].set(&cell, TicTacToePiece::Nought) {
+                                        tictactoe[index].next();
                                     } else {
                                         answer_callback_query = Some("请在空白处落子");
                                     }
@@ -305,13 +253,12 @@ pub async fn tictactoe_inlinekeyboard_handler(context: &Context, query: Callback
                                 }
                             },
                             None => {
-                                if tictactoe_vec[index].is_empty(&cell) {
-                                    tictactoe_vec[index].player_nought = Some(user.clone());
-                                    tictactoe_vec[index].set(&cell, TicTacToePiece::Nought);
-                                    tictactoe_vec[index].next();
+                                if tictactoe[index].set(&cell, TicTacToePiece::Nought) {
+                                    tictactoe[index].player_nought = Some(user.clone());
+                                    tictactoe[index].next();
                                     edit_message = Some(EditMessageText::new(
                                         chat_id, message_id,
-                                        String::from("Tic-Tac-Toe\n") + &tictactoe_vec[index].print_players()
+                                        String::from("Tic-Tac-Toe\n") + &tictactoe[index].print_players()
                                     ));
                                 } else {
                                     answer_callback_query = Some("请在空白处落子");
@@ -333,11 +280,11 @@ pub async fn tictactoe_inlinekeyboard_handler(context: &Context, query: Callback
                         context.api.execute(method).await?;
                     }
                 }
-                match tictactoe_vec[index].is_ended() {
+                match tictactoe[index].is_ended() {
                     TicTacToeGameState::OnGoing => {
-                        session.set("tictactoe_vec", &tictactoe_vec).await?;
+                        session.set("tictactoe", &tictactoe).await?;
                         let edit_reply_markup = EditMessageReplyMarkup::new(chat_id, message_id)
-                            .reply_markup(tictactoe_vec[index].get_inline_keyboard());
+                            .reply_markup(tictactoe[index].get_inline_keyboard());
                         match edit_message {
                             Some(edit_message) => {
                                 try_join!(context.api.execute(edit_message), context.api.execute(edit_reply_markup))?;
@@ -351,35 +298,35 @@ pub async fn tictactoe_inlinekeyboard_handler(context: &Context, query: Callback
                         let method = EditMessageText::new(
                             chat_id, message_id,
                             String::from("Tic-Tac-Toe\n") +
-                            &tictactoe_vec[index].print_players() +
+                            &tictactoe[index].print_players() +
                             &String::from("\n") +
-                            &tictactoe_vec[index].print() +
+                            &tictactoe[index].print() +
                             &String::from("平局")
                         );
                         context.api.execute(method).await?;
-                        tictactoe_vec.remove(index);
-                        if tictactoe_vec.is_empty() {
-                            session.remove("tictactoe_vec").await?;
+                        tictactoe.remove(index);
+                        if tictactoe.is_empty() {
+                            session.remove("tictactoe").await?;
                         } else {
-                            session.set("tictactoe_vec", &tictactoe_vec).await?;
+                            session.set("tictactoe", &tictactoe).await?;
                         }
                     },
                     TicTacToeGameState::Win => {
                         let method = EditMessageText::new(
                             chat_id, message_id,
                             String::from("Tic-Tac-Toe\n") +
-                            &tictactoe_vec[index].print_players() +
+                            &tictactoe[index].print_players() +
                             &String::from("\n") +
-                            &tictactoe_vec[index].print() +
+                            &tictactoe[index].print() +
                             &user.username.unwrap_or(String::from("")) +
                             &String::from(" 赢了")
                         );
                         context.api.execute(method).await?;
-                        tictactoe_vec.remove(index);
-                        if tictactoe_vec.is_empty() {
-                            session.remove("tictactoe_vec").await?;
+                        tictactoe.remove(index);
+                        if tictactoe.is_empty() {
+                            session.remove("tictactoe").await?;
                         } else {
-                            session.set("tictactoe_vec", &tictactoe_vec).await?;
+                            session.set("tictactoe", &tictactoe).await?;
                         }
                     }
                 }

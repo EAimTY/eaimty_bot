@@ -20,7 +20,7 @@ impl OthelloPiece {
     fn as_str(&self) -> &str {
         match self {
             OthelloPiece::Black => "⚫",
-            OthelloPiece::Empty => "",
+            OthelloPiece::Empty => " ",
             OthelloPiece::White => "⚪"
         }
     }
