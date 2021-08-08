@@ -13,6 +13,7 @@ pub async fn start_command_handler(context: &Context, command: Command) -> Resul
                 OCR - /ocr - 识别图片中文字（基于 Tesseract）\n\
                 黑白棋 - /othello - 玩黑白棋\n\
                 没有，没有，没有，通过！ - 文字内容包含 “有没有” - 连续发送 3 次 “没有” 和 1 次 “好，没有，通过！”\n\
+                老虎机 - /slot - 转一次老虎机\n\
                 Tic-Tac-Toe - `/tictactoe` - 玩 Tic-Tac-Toe";
     let method = SendMessage::new(chat_id, start);
     context.api.execute(method).await?;
