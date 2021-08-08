@@ -1,0 +1,36 @@
+name: release
+
+on:
+  push:
+    branches:
+      - stable
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - run: git fetch --all --tags
+
+      - name: Version check
+        id: version_check
+        uses: thebongy/version-check@v1
+        with:
+          file: Cargo.toml
+          tagFormat: v${version}
+
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: nightly
+
+      - uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release
+
+      - uses: ncipollo/release-action@v1
+        with:
+          tag: ${{ steps.version_check.outputs.releaseVersion }}
+          artifacts: "target/release/eaimty_bot"
+          token: ${{ secrets.GITHUB_TOKEN }}
