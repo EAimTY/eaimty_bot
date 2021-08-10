@@ -32,8 +32,8 @@ jobs:
 
       - name: Binary Optimization
         run: |
-        strip -s target/release/eaimty_bot
-        upx -9 target/release/eaimty_bot
+          strip -s target/release/eaimty_bot
+          upx -9 target/release/eaimty_bot
 
       - uses: ncipollo/release-action@v1
         with:
