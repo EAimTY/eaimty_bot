@@ -4,8 +4,8 @@ use carapax::{
     session::{backend::fs::FilesystemBackend, SessionCollector, SessionManager},
     webhook, Api, Config, Dispatcher,
 };
-use clap::{App, Arg};
-use std::time::Duration;
+use getopts::Options;
+use std::{env, time::Duration};
 use tempfile::tempdir;
 use tokio::spawn;
 
@@ -13,9 +13,48 @@ mod context;
 mod error;
 mod handlers;
 
-async fn run(token: &str, proxy: &str, webhook: &str) {
-    let mut config = Config::new(token);
-    if !proxy.is_empty() {
+#[tokio::main]
+async fn main() {
+    let args: Vec<String> = env::args().collect();
+    let program = args[0].clone();
+    let mut opts = Options::new();
+    opts.optopt("t", "token", "set token", "TOKEN");
+    opts.optopt("p", "proxy", "set proxy", "PROXY");
+    opts.optopt("w", "webhook-port", "set webhook port", "WEBHOOK_PORT");
+    opts.optflag("v", "version", "print version");
+    opts.optflag("h", "help", "print this help menu");
+    let matches = match opts.parse(&args[1..]) {
+        Ok(m) => m,
+        Err(e) => {
+            panic!("{}", e)
+        }
+    };
+    if matches.opt_present("h") {
+        print_usage(&program, opts);
+        return;
+    }
+    let token = matches.opt_str("t");
+    if let None = token {
+        print_usage(&program, opts);
+        return;
+    }
+    let proxy = matches.opt_str("p");
+    let webhook_port = matches.opt_str("w");
+    if !matches.free.is_empty() {
+        print_usage(&program, opts);
+        return;
+    };
+    run(token, proxy, webhook_port).await;
+}
+
+fn print_usage(program: &str, opts: Options) {
+    let brief = format!("Usage: {} FILE [options]", program);
+    print!("{}", opts.usage(&brief));
+}
+
+async fn run(token: Option<String>, proxy: Option<String>, webhook_port: Option<String>) {
+    let mut config = Config::new(token.unwrap());
+    if let Some(proxy) = proxy {
         config = config.proxy(proxy).expect("Failed to set proxy");
     }
     let api = Api::new(config).expect("Failed to create API");
@@ -45,52 +84,17 @@ async fn run(token: &str, proxy: &str, webhook: &str) {
     dispatcher.add_handler(handlers::start::start_command_handler);
     dispatcher.add_handler(handlers::tictactoe::tictactoe_command_handler);
     dispatcher.add_handler(handlers::tictactoe::tictactoe_inlinekeyboard_handler);
-    let webhook_port = webhook.parse::<u16>().unwrap_or(0);
-    if webhook_port == 0 {
-        println!("Running in longpoll mode");
-        LongPoll::new(api, dispatcher).run().await;
-    } else {
-        println!("Running at port {} in webhook mode", webhook_port);
-        webhook::run_server(([127, 0, 0, 1], webhook_port), "/", dispatcher)
-            .await
-            .expect("Failed to run webhook server");
+    match webhook_port {
+        Some(port) => {
+            let port = port.parse::<u16>().unwrap_or(0);
+            println!("Running at port {} in webhook mode", port);
+            webhook::run_server(([127, 0, 0, 1], port), "/", dispatcher)
+                .await
+                .expect("Failed to run webhook server");
+        }
+        None => {
+            println!("Running in longpoll mode");
+            LongPoll::new(api, dispatcher).run().await;
+        }
     }
-}
-
-#[tokio::main]
-async fn main() {
-    let matches = App::new("eaimty_bot")
-        .about("A Telegram Bot")
-        .arg(
-            Arg::with_name("token")
-                .short("t")
-                .long("token")
-                .value_name("TOKEN")
-                .help("Sets HTTP API token")
-                .required(true)
-                .takes_value(true),
-        )
-        .arg(
-            Arg::with_name("proxy")
-                .short("p")
-                .long("proxy")
-                .value_name("PROXY")
-                .help("Sets proxy (supported: http, https, socks5)")
-                .takes_value(true),
-        )
-        .arg(
-            Arg::with_name("webhook")
-                .short("w")
-                .long("webhook")
-                .value_name("PORT")
-                .help("Runs in webhook mode. Sets port number as the argument value")
-                .takes_value(true),
-        )
-        .get_matches();
-    run(
-        matches.value_of("token").unwrap(),
-        matches.value_of("proxy").unwrap_or(""),
-        matches.value_of("webhook").unwrap_or(""),
-    )
-    .await;
 }
