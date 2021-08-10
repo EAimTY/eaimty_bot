@@ -1,7 +1,7 @@
 [package]
 name = "eaimty_bot"
 description = "个人用 Telegram Bot"
-version = "0.5.1"
+version = "0.6.0"
 authors = ["EAimTY <ea.imty@gmail.com>"]
 edition = "2018"
 readme = "README.md"
@@ -9,11 +9,15 @@ license = "GPL-3.0 License"
 repository = "https://github.com/EAimTY/eaimty_bot"
 
 [dependencies]
-carapax = {version = "0.10", features = ["session-fs"]}
+carapax = { version = "0.10", features = ["session-fs"] }
 getopts = "0.2"
-reqwest = {version = "0.11", default-features = false}
+reqwest = { version = "0.11", default-features = false }
 serde = "1.0"
 tempfile = "3.2"
 tesseract = "0.9"
-tokio = {version = "1.8", features = ["rt-multi-thread", "macros"]}
+tokio = { version = "1.8", features = ["rt-multi-thread", "macros"] }
 tokio-stream = "0.1"
+
+[profile.release]
+lto = true
+codegen-units = 1
