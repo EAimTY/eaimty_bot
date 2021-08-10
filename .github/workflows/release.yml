@@ -30,7 +30,8 @@ jobs:
           command: build
           args: --release
 
-      - run: |
+      - name: Binary Optimization
+        run: |
         strip -s target/release/eaimty_bot
         upx -9 target/release/eaimty_bot
 
