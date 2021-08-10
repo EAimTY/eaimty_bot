@@ -1,9 +1,13 @@
 use crate::{context::Context, error::ErrorHandler};
 use carapax::{
-    handler, HandlerResult,
+    handler,
     methods::{AnswerCallbackQuery, EditMessageReplyMarkup, EditMessageText, SendMessage},
     session::SessionId,
-    types::{CallbackQuery, Command, InlineKeyboardButton, InlineKeyboardButtonKind, InlineKeyboardMarkup, ReplyMarkup, User}
+    types::{
+        CallbackQuery, Command, InlineKeyboardButton, InlineKeyboardButtonKind,
+        InlineKeyboardMarkup, ReplyMarkup, User,
+    },
+    HandlerResult,
 };
 use serde::{Deserialize, Serialize};
 use std::cmp::{max, min, Ordering};
@@ -12,24 +16,24 @@ use tokio::try_join;
 #[derive(Copy, Clone, PartialEq, Serialize, Deserialize)]
 enum OthelloPiece {
     Black,
+    White,
     Empty,
-    White
 }
 
 impl OthelloPiece {
     fn as_str(&self) -> &str {
         match self {
             OthelloPiece::Black => "⚫",
+            OthelloPiece::White => "⚪",
             OthelloPiece::Empty => "➖",
-            OthelloPiece::White => "⚪"
         }
     }
 
     fn reverse(&self) -> OthelloPiece {
         match self {
+            OthelloPiece::White => OthelloPiece::Black,
             OthelloPiece::Black => OthelloPiece::White,
             OthelloPiece::Empty => OthelloPiece::Empty,
-            OthelloPiece::White => OthelloPiece::Black
         }
     }
 }
@@ -40,7 +44,7 @@ struct Othello {
     data: [[OthelloPiece; 8]; 8],
     next: OthelloPiece,
     player_black: Option<User>,
-    player_white: Option<User>
+    player_white: Option<User>,
 }
 
 impl Othello {
@@ -57,7 +61,7 @@ impl Othello {
             },
             next: OthelloPiece::Black,
             player_black: None,
-            player_white: None
+            player_white: None,
         }
     }
 
@@ -243,7 +247,7 @@ impl Othello {
     fn next(&mut self) {
         self.next = match self.next {
             OthelloPiece::Black => OthelloPiece::White,
-            _ => OthelloPiece::Black
+            _ => OthelloPiece::Black,
         };
     }
 
@@ -353,12 +357,12 @@ impl Othello {
         for col in 0..8 {
             let mut keyboad_col: Vec<InlineKeyboardButton> = Vec::new();
             for row in 0..8 {
-                keyboad_col.push(
-                    InlineKeyboardButton::new(
-                        self.get(&(row, col)).as_str(),
-                        InlineKeyboardButtonKind::CallbackData(String::from("othello_") + &row.to_string() + "_" + &col.to_string())
-                    )
-                );
+                keyboad_col.push(InlineKeyboardButton::new(
+                    self.get(&(row, col)).as_str(),
+                    InlineKeyboardButtonKind::CallbackData(
+                        String::from("othello_") + &row.to_string() + "_" + &col.to_string(),
+                    ),
+                ));
             }
             keyboad.push(keyboad_col);
         }
@@ -402,14 +406,32 @@ impl Othello {
                 match self.get(&(row, col)) {
                     OthelloPiece::Black => black += 1,
                     OthelloPiece::White => white += 1,
-                    _ => ()
+                    _ => (),
                 }
             }
         }
         match black.cmp(&white) {
-            Ordering::Less => String::from("⚫：") + &black.to_string() + " ⚪：" + &white.to_string() + "\n\n⚪ 赢了",
-            Ordering::Greater => String::from("⚫：") + &black.to_string() + " ⚪：" + &white.to_string() + "\n\n⚫ 赢了",
-            Ordering::Equal => String::from("⚫：") + &black.to_string() + " ⚪：" + &white.to_string() + "\n\n和棋",
+            Ordering::Less => {
+                String::from("⚫：")
+                    + &black.to_string()
+                    + " ⚪："
+                    + &white.to_string()
+                    + "\n\n⚪ 赢了"
+            }
+            Ordering::Greater => {
+                String::from("⚫：")
+                    + &black.to_string()
+                    + " ⚪："
+                    + &white.to_string()
+                    + "\n\n⚫ 赢了"
+            }
+            Ordering::Equal => {
+                String::from("⚫：")
+                    + &black.to_string()
+                    + " ⚪："
+                    + &white.to_string()
+                    + "\n\n和棋"
+            }
         }
     }
 }
@@ -431,19 +453,26 @@ impl OthelloVec for Vec<Othello> {
 }
 
 #[handler(command = "/othello")]
-pub async fn othello_command_handler(context: &Context, command: Command) -> Result<HandlerResult, ErrorHandler> {
+pub async fn othello_command_handler(
+    context: &Context,
+    command: Command,
+) -> Result<HandlerResult, ErrorHandler> {
     let message = command.get_message();
     let chat_id = message.get_chat_id();
     if let Some(_) = message.get_user() {
-        let method = SendMessage::new(chat_id, "黑白棋")
-            .reply_markup(ReplyMarkup::InlineKeyboardMarkup(Othello::new(0).get_inline_keyboard()));
+        let method = SendMessage::new(chat_id, "黑白棋").reply_markup(
+            ReplyMarkup::InlineKeyboardMarkup(Othello::new(0).get_inline_keyboard()),
+        );
         context.api.execute(method).await?;
     }
     Ok(HandlerResult::Stop)
 }
 
 #[handler]
-pub async fn othello_inlinekeyboard_handler(context: &Context, query: CallbackQuery) -> Result<HandlerResult, ErrorHandler> {
+pub async fn othello_inlinekeyboard_handler(
+    context: &Context,
+    query: CallbackQuery,
+) -> Result<HandlerResult, ErrorHandler> {
     let data = query.data;
     if let Some(data) = data {
         let cell: Option<(usize, usize)> = match data.as_str() {
@@ -511,7 +540,7 @@ pub async fn othello_inlinekeyboard_handler(context: &Context, query: CallbackQu
             "othello_7_5" => Some((7, 5)),
             "othello_7_6" => Some((7, 6)),
             "othello_7_7" => Some((7, 7)),
-            _ => None
+            _ => None,
         };
         if let Some(cell) = cell {
             let message = query.message.unwrap();
@@ -519,71 +548,71 @@ pub async fn othello_inlinekeyboard_handler(context: &Context, query: CallbackQu
             let message_id = message.id;
             if let Some(message_author) = message.get_user() {
                 let user = query.from;
-                let mut session = context.session_manager.get_session(SessionId::new(chat_id, message_author.id))?;
+                let mut session = context
+                    .session_manager
+                    .get_session(SessionId::new(chat_id, message_author.id))?;
                 let mut othello = session.get("othello").await?.unwrap_or(Vec::new());
                 let index = othello.get_index(message_id);
                 let mut edit_message: Option<EditMessageText> = None;
                 let mut answer_callback_query: Option<&str> = None;
                 match othello[index].next {
-                    OthelloPiece::Black => {
-                        match &othello[index].player_black {
-                            Some(player_black) => {
-                                if &user == player_black {
-                                    if othello[index].set(&cell, OthelloPiece::Black) {
-                                        if othello[index].can_put(OthelloPiece::White) {
-                                            othello[index].next();
-                                        }
-                                    } else {
-                                        answer_callback_query = Some("无法在此落子");
-                                    }
-                                } else {
-                                    answer_callback_query = Some("不是您的回合");
-                                }
-                            },
-                            None => {
+                    OthelloPiece::Black => match &othello[index].player_black {
+                        Some(player_black) => {
+                            if &user == player_black {
                                 if othello[index].set(&cell, OthelloPiece::Black) {
-                                    othello[index].player_black = Some(user.clone());
-                                    othello[index].next();
-                                    edit_message = Some(EditMessageText::new(
-                                        chat_id, message_id,
-                                        String::from("黑白棋\n") + &othello[index].print_players()
-                                    ));
-                                } else {
-                                    answer_callback_query = Some("无法在此落子");
-                                }
-                            }
-                        }
-                    },
-                    OthelloPiece::White => {
-                        match &othello[index].player_white {
-                            Some(player_white) => {
-                                if &user == player_white {
-                                    if othello[index].set(&cell, OthelloPiece::White) {
-                                        if othello[index].can_put(OthelloPiece::Black) {
-                                            othello[index].next();
-                                        }
-                                    } else {
-                                        answer_callback_query = Some("无法在此落子");
+                                    if othello[index].can_put(OthelloPiece::White) {
+                                        othello[index].next();
                                     }
                                 } else {
-                                    answer_callback_query = Some("不是您的回合");
-                                }
-                            },
-                            None => {
-                                if othello[index].set(&cell, OthelloPiece::White) {
-                                    othello[index].player_white = Some(user.clone());
-                                    othello[index].next();
-                                    edit_message = Some(EditMessageText::new(
-                                        chat_id, message_id,
-                                        String::from("黑白棋\n") + &othello[index].print_players()
-                                    ));
-                                } else {
                                     answer_callback_query = Some("无法在此落子");
                                 }
+                            } else {
+                                answer_callback_query = Some("不是您的回合");
+                            }
+                        }
+                        None => {
+                            if othello[index].set(&cell, OthelloPiece::Black) {
+                                othello[index].player_black = Some(user.clone());
+                                othello[index].next();
+                                edit_message = Some(EditMessageText::new(
+                                    chat_id,
+                                    message_id,
+                                    String::from("黑白棋\n") + &othello[index].print_players(),
+                                ));
+                            } else {
+                                answer_callback_query = Some("无法在此落子");
                             }
                         }
                     },
-                    _ => ()
+                    OthelloPiece::White => match &othello[index].player_white {
+                        Some(player_white) => {
+                            if &user == player_white {
+                                if othello[index].set(&cell, OthelloPiece::White) {
+                                    if othello[index].can_put(OthelloPiece::Black) {
+                                        othello[index].next();
+                                    }
+                                } else {
+                                    answer_callback_query = Some("无法在此落子");
+                                }
+                            } else {
+                                answer_callback_query = Some("不是您的回合");
+                            }
+                        }
+                        None => {
+                            if othello[index].set(&cell, OthelloPiece::White) {
+                                othello[index].player_white = Some(user.clone());
+                                othello[index].next();
+                                edit_message = Some(EditMessageText::new(
+                                    chat_id,
+                                    message_id,
+                                    String::from("黑白棋\n") + &othello[index].print_players(),
+                                ));
+                            } else {
+                                answer_callback_query = Some("无法在此落子");
+                            }
+                        }
+                    },
+                    _ => (),
                 }
                 match answer_callback_query {
                     Some(message) => {
@@ -591,7 +620,7 @@ pub async fn othello_inlinekeyboard_handler(context: &Context, query: CallbackQu
                             .text(message)
                             .show_alert(true);
                         context.api.execute(method).await?;
-                    },
+                    }
                     None => {
                         let method = AnswerCallbackQuery::new(query.id);
                         context.api.execute(method).await?;
@@ -599,12 +628,13 @@ pub async fn othello_inlinekeyboard_handler(context: &Context, query: CallbackQu
                 }
                 if othello[index].is_ended() {
                     let method = EditMessageText::new(
-                        chat_id, message_id,
-                        String::from("黑白棋\n") +
-                        &othello[index].print_players() +
-                        &String::from("\n") +
-                        &othello[index].print() +
-                        &othello[index].print_result()
+                        chat_id,
+                        message_id,
+                        String::from("黑白棋\n")
+                            + &othello[index].print_players()
+                            + &String::from("\n")
+                            + &othello[index].print()
+                            + &othello[index].print_result(),
                     );
                     context.api.execute(method).await?;
                     othello.remove(index);
@@ -619,8 +649,11 @@ pub async fn othello_inlinekeyboard_handler(context: &Context, query: CallbackQu
                         .reply_markup(othello[index].get_inline_keyboard());
                     match edit_message {
                         Some(edit_message) => {
-                            try_join!(context.api.execute(edit_message), context.api.execute(edit_reply_markup))?;
-                        },
+                            try_join!(
+                                context.api.execute(edit_message),
+                                context.api.execute(edit_reply_markup)
+                            )?;
+                        }
                         None => {
                             context.api.execute(edit_reply_markup).await?;
                         }
