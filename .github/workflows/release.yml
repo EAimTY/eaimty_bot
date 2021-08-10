@@ -9,7 +9,7 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - run: sudo apt-get -y install tesseract-ocr libtesseract-dev libleptonica-dev
+      - run: sudo apt-get -y install binutils upx tesseract-ocr libtesseract-dev libleptonica-dev
 
       - uses: actions/checkout@v2
       - run: git fetch --all --tags
@@ -23,13 +23,16 @@ jobs:
 
       - uses: actions-rs/toolchain@v1
         with:
-          profile: minimal
-          toolchain: nightly
+          toolchain: stable
 
       - uses: actions-rs/cargo@v1
         with:
           command: build
           args: --release
+
+      - run: |
+        strip -s target/release/eaimty_bot
+        upx -9 target/release/eaimty_bot
 
       - uses: ncipollo/release-action@v1
         with:

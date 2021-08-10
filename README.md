@@ -67,10 +67,6 @@ Leptonica、Tesseract、Tesseract 语言包（eng、jpn、chi_sim、chi_tra）
     git clone https://github.com/EAimTY/eaimty_bot.git
     cd eaimty_bot
 
-切换至 Rust Nightly 工具链
-
-    rustup default nightly
-
 编译
 
     cargo build --release
