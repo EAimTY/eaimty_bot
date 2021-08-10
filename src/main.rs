@@ -18,42 +18,59 @@ async fn main() {
     let args: Vec<String> = env::args().collect();
     let program = args[0].clone();
     let mut opts = Options::new();
-    opts.optopt("t", "token", "set token", "TOKEN");
-    opts.optopt("p", "proxy", "set proxy", "PROXY");
-    opts.optopt("w", "webhook-port", "set webhook port", "WEBHOOK_PORT");
-    opts.optflag("v", "version", "print version");
+    opts.optopt(
+        "t",
+        "token",
+        "(required) set Telegram Bot HTTP API token",
+        "TOKEN",
+    );
+    opts.optopt(
+        "p",
+        "proxy",
+        "set proxy (supported: http, https, socks5)",
+        "PROXY",
+    );
+    opts.optopt(
+        "w",
+        "webhook-port",
+        "set webhook port (1 ~ 65535) and run bot in webhook mode",
+        "WEBHOOK_PORT",
+    );
     opts.optflag("h", "help", "print this help menu");
     let matches = match opts.parse(&args[1..]) {
-        Ok(m) => m,
-        Err(e) => {
-            panic!("{}", e)
+        Ok(matches) => matches,
+        Err(_) => {
+            print_help(&program, opts);
+            return;
         }
     };
+    if !matches.free.is_empty() {
+        print_help(&program, opts);
+        return;
+    };
     if matches.opt_present("h") {
-        print_usage(&program, opts);
+        print_help(&program, opts);
         return;
     }
     let token = matches.opt_str("t");
-    if let None = token {
-        print_usage(&program, opts);
-        return;
-    }
     let proxy = matches.opt_str("p");
     let webhook_port = matches.opt_str("w");
-    if !matches.free.is_empty() {
-        print_usage(&program, opts);
-        return;
-    };
-    run(token, proxy, webhook_port).await;
+    match token {
+        Some(token) => run(token, proxy, webhook_port).await,
+        None => {
+            print_help(&program, opts);
+            return;
+        }
+    }
 }
 
-fn print_usage(program: &str, opts: Options) {
+fn print_help(program: &str, opts: Options) {
     let brief = format!("Usage: {} FILE [options]", program);
     print!("{}", opts.usage(&brief));
 }
 
-async fn run(token: Option<String>, proxy: Option<String>, webhook_port: Option<String>) {
-    let mut config = Config::new(token.unwrap());
+async fn run(token: String, proxy: Option<String>, webhook_port: Option<String>) {
+    let mut config = Config::new(token);
     if let Some(proxy) = proxy {
         config = config.proxy(proxy).expect("Failed to set proxy");
     }
@@ -84,17 +101,17 @@ async fn run(token: Option<String>, proxy: Option<String>, webhook_port: Option<
     dispatcher.add_handler(handlers::start::start_command_handler);
     dispatcher.add_handler(handlers::tictactoe::tictactoe_command_handler);
     dispatcher.add_handler(handlers::tictactoe::tictactoe_inlinekeyboard_handler);
-    match webhook_port {
-        Some(port) => {
-            let port = port.parse::<u16>().unwrap_or(0);
-            println!("Running at port {} in webhook mode", port);
-            webhook::run_server(([127, 0, 0, 1], port), "/", dispatcher)
-                .await
-                .expect("Failed to run webhook server");
-        }
-        None => {
-            println!("Running in longpoll mode");
-            LongPoll::new(api, dispatcher).run().await;
-        }
+    let webhook_port = webhook_port
+        .unwrap_or(String::from("0"))
+        .parse::<u16>()
+        .unwrap_or(0);
+    if webhook_port == 0 {
+        println!("Running in longpoll mode");
+        LongPoll::new(api, dispatcher).run().await;
+    } else {
+        println!("Running at port {} in webhook mode", webhook_port);
+        webhook::run_server(([127, 0, 0, 1], webhook_port), "/", dispatcher)
+            .await
+            .expect("Failed to run webhook server");
     }
 }
