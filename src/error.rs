@@ -2,9 +2,9 @@ use carapax::{
     session::{SessionError, SessionIdError},
     DownloadFileError, ExecuteError,
 };
+use leptess::{leptonica::PixError, tesseract::TessInitError};
 use reqwest::Error as ReqwestError;
 use std::{convert::Infallible, error::Error, fmt, io::Error as IOError};
-use tesseract::TesseractError;
 
 #[derive(Debug)]
 pub enum ErrorHandler {
@@ -12,10 +12,11 @@ pub enum ErrorHandler {
     ExecuteError(ExecuteError),
     Infallible(Infallible),
     IOError(IOError),
+    PixError(PixError),
     ReqwestError(ReqwestError),
     SessionError(SessionError),
     SessionIdError(SessionIdError),
-    TesseractError(TesseractError),
+    TessInitError(TessInitError),
 }
 
 impl From<DownloadFileError> for ErrorHandler {
@@ -42,6 +43,12 @@ impl From<IOError> for ErrorHandler {
     }
 }
 
+impl From<PixError> for ErrorHandler {
+    fn from(err: PixError) -> Self {
+        ErrorHandler::PixError(err)
+    }
+}
+
 impl From<ReqwestError> for ErrorHandler {
     fn from(err: ReqwestError) -> Self {
         ErrorHandler::ReqwestError(err)
@@ -60,9 +67,9 @@ impl From<SessionIdError> for ErrorHandler {
     }
 }
 
-impl From<TesseractError> for ErrorHandler {
-    fn from(err: TesseractError) -> Self {
-        ErrorHandler::TesseractError(err)
+impl From<TessInitError> for ErrorHandler {
+    fn from(err: TessInitError) -> Self {
+        ErrorHandler::TessInitError(err)
     }
 }
 
@@ -74,10 +81,11 @@ impl fmt::Display for ErrorHandler {
             ExecuteError(err) => write!(out, "failed to execute method: {}", err),
             Infallible(err) => write!(out, "infallible error: {}", err),
             IOError(err) => write!(out, "can not operate file: {}", err),
+            PixError(err) => write!(out, "can not read image file: {}", err),
             ReqwestError(err) => write!(out, "failed to process request: {}", err),
             SessionError(err) => write!(out, "failed to operate session: {}", err),
             SessionIdError(err) => write!(out, "failed to get session id: {}", err),
-            TesseractError(err) => write!(out, "failed to operate ocr: {}", err),
+            TessInitError(err) => write!(out, "failed to initiate tesseract: {}", err),
         }
     }
 }
@@ -90,10 +98,11 @@ impl Error for ErrorHandler {
             ExecuteError(err) => err,
             Infallible(err) => err,
             IOError(err) => err,
+            PixError(err) => err,
             ReqwestError(err) => err,
             SessionError(err) => err,
             SessionIdError(err) => err,
-            TesseractError(err) => err,
+            TessInitError(err) => err,
         })
     }
 }
