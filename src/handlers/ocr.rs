@@ -9,7 +9,7 @@ use carapax::{
     },
     HandlerResult,
 };
-use tesseract::ocr;
+use leptess::LepTess;
 use tokio::{fs::File, io::AsyncWriteExt, try_join};
 use tokio_stream::StreamExt;
 
@@ -191,7 +191,9 @@ pub async fn ocr_image_handler(
                             while let Some(chunk) = stream.next().await {
                                 photo.write_all(&chunk?).await?;
                             }
-                            let result = ocr(save_path.to_str().unwrap_or(""), ocr_lang.as_str())?;
+                            let mut lt = LepTess::new(None, ocr_lang.as_str())?;
+                            lt.set_image(save_path)?;
+                            let result = lt.get_utf8_text().unwrap_or(String::from("识别失败"));
                             let method = SendMessage::new(chat_id, result);
                             context.api.execute(method).await?;
                         }
