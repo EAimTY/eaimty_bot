@@ -145,10 +145,6 @@ impl MineSweeper {
             MineBoxesState::Unknow => self.mask[r * self.col + c] = MineBoxesState::Flag,
             _ => (),
         }
-
-        // if self.check() {
-        //     self.game_over(true)
-        // }
     }
 
     fn open(&mut self, r: usize, c: usize) {
@@ -194,8 +190,6 @@ impl MineSweeper {
                                 _ => (),
                             }
                         }
-                        // self.mask[r * self.col + c] =
-                        //     MineBoxesState::Know(self.data[r * self.col + c]);
                     }
                     _ => (),
                 }
@@ -257,10 +251,6 @@ impl MineSweeper {
             }
             _ => (),
         }
-
-        // if self.check() {
-        //     self.game_over(true)
-        // }
     }
 
     fn check(&self) -> MineSweeperGameState {
