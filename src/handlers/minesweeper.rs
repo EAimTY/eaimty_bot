@@ -1,5 +1,4 @@
 use crate::{context::Context, error::ErrorHandler};
-
 use carapax::{
     handler,
     methods::{EditMessageReplyMarkup, EditMessageText, SendMessage},
@@ -131,7 +130,7 @@ impl MineSweeper {
                 keyboad_row.push(InlineKeyboardButton::new(
                     self.mask[r * self.col + c].to_string(),
                     InlineKeyboardButtonKind::CallbackData(
-                        String::from("mine_") + &r.to_string() + "_" + &c.to_string(),
+                        String::from("minesweeper_") + &r.to_string() + "_" + &c.to_string(),
                     ),
                 ));
             }
@@ -150,50 +149,48 @@ impl MineSweeper {
     fn open(&mut self, r: usize, c: usize) {
         let mut queue = Vec::new();
         match self.mask[r * self.col + c] {
-            MineBoxesState::Unknow => {
-                match self.data[r * self.col + c] {
-                    MineBoxes::Mine => {
-                        self.data[r * self.col + c] = MineBoxes::Explode;
-                        self.mask[r * self.col + c] = MineBoxesState::Know(MineBoxes::Explode);
-                    }
-                    MineBoxes::Num(_) => {
-                        queue.push((r, c));
-                        while queue.len() != 0 {
-                            let cell = queue.remove(0);
-                            match self.data[cell.0 * self.col + cell.1] {
-                                MineBoxes::Num(0) => {
-                                    self.mask[cell.0 * self.col + cell.1] =
-                                        MineBoxesState::Know(self.data[cell.0 * self.col + cell.1]);
+            MineBoxesState::Unknow => match self.data[r * self.col + c] {
+                MineBoxes::Mine => {
+                    self.data[r * self.col + c] = MineBoxes::Explode;
+                    self.mask[r * self.col + c] = MineBoxesState::Know(MineBoxes::Explode);
+                }
+                MineBoxes::Num(_) => {
+                    queue.push((r, c));
+                    while queue.len() != 0 {
+                        let cell = queue.remove(0);
+                        match self.data[cell.0 * self.col + cell.1] {
+                            MineBoxes::Num(0) => {
+                                self.mask[cell.0 * self.col + cell.1] =
+                                    MineBoxesState::Know(self.data[cell.0 * self.col + cell.1]);
 
-                                    for (_r, _c) in ARROUND {
-                                        if cell.0 as i32 + _r >= 0
-                                            && cell.0 as i32 + _r < self.col as i32
-                                            && cell.1 as i32 + _c >= 0
-                                            && cell.1 as i32 + _c < self.row as i32
+                                for (_r, _c) in ARROUND {
+                                    if cell.0 as i32 + _r >= 0
+                                        && cell.0 as i32 + _r < self.col as i32
+                                        && cell.1 as i32 + _c >= 0
+                                        && cell.1 as i32 + _c < self.row as i32
+                                    {
+                                        if let MineBoxesState::Unknow =
+                                            self.mask[(cell.0 as i32 + _r) as usize * self.col
+                                                + (cell.1 as i32 + _c) as usize]
                                         {
-                                            if let MineBoxesState::Unknow =
-                                                self.mask[(cell.0 as i32 + _r) as usize * self.col
-                                                    + (cell.1 as i32 + _c) as usize]
-                                            {
-                                                queue.push((
-                                                    (cell.0 as i32 + _r) as usize,
-                                                    (cell.1 as i32 + _c) as usize,
-                                                ))
-                                            }
+                                            queue.push((
+                                                (cell.0 as i32 + _r) as usize,
+                                                (cell.1 as i32 + _c) as usize,
+                                            ))
                                         }
                                     }
                                 }
-                                MineBoxes::Num(_) => {
-                                    self.mask[cell.0 * self.col + cell.1] =
-                                        MineBoxesState::Know(self.data[cell.0 * self.col + cell.1])
-                                }
-                                _ => (),
                             }
+                            MineBoxes::Num(_) => {
+                                self.mask[cell.0 * self.col + cell.1] =
+                                    MineBoxesState::Know(self.data[cell.0 * self.col + cell.1])
+                            }
+                            _ => (),
                         }
                     }
-                    _ => (),
                 }
-            }
+                _ => (),
+            },
             _ => (),
         }
     }
@@ -263,14 +260,12 @@ impl MineSweeper {
                     MineBoxesState::Unknow => {
                         is_win = false;
                     }
-
                     MineBoxesState::Flag => {
                         if let MineBoxes::Mine = self.data[r * self.col + c] {
                         } else {
                             is_win = false;
                         }
                     }
-
                     _ => continue,
                 }
             }
@@ -299,17 +294,16 @@ impl MineVec for Vec<MineSweeper> {
     }
 }
 
-#[handler(command = "/mine")]
-pub async fn mine_command_handler(
+#[handler(command = "/minesweeper")]
+pub async fn minesweeper_command_handler(
     context: &Context,
     command: Command,
 ) -> Result<HandlerResult, ErrorHandler> {
     let message = command.get_message();
     let chat_id = message.get_chat_id();
-
     if let Some(_) = message.get_user() {
         let method = SendMessage::new(chat_id, "Mine").reply_markup(
-            ReplyMarkup::InlineKeyboardMarkup(MineSweeper::new(0, 8, 8, 10).get_inline_keyboard()),
+            ReplyMarkup::InlineKeyboardMarkup(MineSweeper::new(0, 8, 8, 8).get_inline_keyboard()),
         );
         context.api.execute(method).await?;
     }
@@ -317,7 +311,7 @@ pub async fn mine_command_handler(
 }
 
 #[handler]
-pub async fn mine_inlinekeyboard_handler(
+pub async fn minesweeper_inlinekeyboard_handler(
     context: &Context,
     query: CallbackQuery,
 ) -> Result<HandlerResult, ErrorHandler> {
@@ -325,7 +319,8 @@ pub async fn mine_inlinekeyboard_handler(
     if let Some(data) = data {
         let cell: Option<(usize, usize)> = {
             let splits: Vec<&str> = data.split('_').collect();
-            if splits[0] == "mine" {
+            if splits[0] == "minesweeper" {
+                // TODO
                 Some((splits[1].parse().unwrap(), splits[2].parse().unwrap()))
             } else {
                 None
@@ -340,26 +335,28 @@ pub async fn mine_inlinekeyboard_handler(
                 let mut session = context
                     .session_manager
                     .get_session(SessionId::new(chat_id, message_author.id))?;
-                let mut mine = session.get("mine").await?.unwrap_or(Vec::new());
-                let index = mine.get_index(message_id);
+                let mut minesweeper = session.get("minesweeper").await?.unwrap_or(Vec::new());
+                let index = minesweeper.get_index(message_id);
                 let edit_message: Option<EditMessageText> = None;
-                match mine[index].mask[cell.0 * mine[index].col + cell.1] {
+                match minesweeper[index].mask[cell.0 * minesweeper[index].col + cell.1] {
                     MineBoxesState::Know(MineBoxes::Num(0)) => (),
-                    MineBoxesState::Know(MineBoxes::Num(_)) => mine[index].open_num(cell.0, cell.1),
-                    MineBoxesState::Unknow => mine[index].open(cell.0, cell.1),
-
+                    MineBoxesState::Know(MineBoxes::Num(_)) => {
+                        minesweeper[index].open_num(cell.0, cell.1)
+                    }
+                    MineBoxesState::Unknow => minesweeper[index].open(cell.0, cell.1),
                     _ => (),
                 }
-                match mine[index].check() {
+                match minesweeper[index].check() {
                     MineSweeperGameState::Win => {
                         let edit_reply_markup = EditMessageReplyMarkup::new(chat_id, message_id)
                             .reply_markup({
                                 let mut keyboad: Vec<Vec<InlineKeyboardButton>> = Vec::new();
-                                for r in 0..mine[index].row {
+                                for r in 0..minesweeper[index].row {
                                     let mut keyboad_row: Vec<InlineKeyboardButton> = Vec::new();
-                                    for c in 0..mine[index].col {
+                                    for c in 0..minesweeper[index].col {
                                         keyboad_row.push(InlineKeyboardButton::new(
-                                            mine[index].mask[r * mine[index].col + c].to_string(),
+                                            minesweeper[index].mask[r * minesweeper[index].col + c]
+                                                .to_string(),
                                             InlineKeyboardButtonKind::CallbackData(String::from(
                                                 "none",
                                             )),
@@ -371,24 +368,25 @@ pub async fn mine_inlinekeyboard_handler(
                             });
                         context.api.execute(edit_reply_markup).await?;
                         let method = SendMessage::new(chat_id, "WIN")
-                            .reply_to_message_id(mine[index].id);
+                            .reply_to_message_id(minesweeper[index].id);
                         context.api.execute(method).await?;
-                        mine.remove(index);
-                        if mine.is_empty() {
-                            session.remove("mine").await?;
+                        minesweeper.remove(index);
+                        if minesweeper.is_empty() {
+                            session.remove("minesweeper").await?;
                         } else {
-                            session.set("mine", &mine).await?;
+                            session.set("minesweeper", &minesweeper).await?;
                         }
                     }
                     MineSweeperGameState::Lose => {
                         let edit_reply_markup = EditMessageReplyMarkup::new(chat_id, message_id)
                             .reply_markup({
                                 let mut keyboad: Vec<Vec<InlineKeyboardButton>> = Vec::new();
-                                for r in 0..mine[index].row {
+                                for r in 0..minesweeper[index].row {
                                     let mut keyboad_row: Vec<InlineKeyboardButton> = Vec::new();
-                                    for c in 0..mine[index].col {
+                                    for c in 0..minesweeper[index].col {
                                         keyboad_row.push(InlineKeyboardButton::new(
-                                            mine[index].data[r * mine[index].col + c].to_string(),
+                                            minesweeper[index].data[r * minesweeper[index].col + c]
+                                                .to_string(),
                                             InlineKeyboardButtonKind::CallbackData(String::from(
                                                 "none",
                                             )),
@@ -402,23 +400,23 @@ pub async fn mine_inlinekeyboard_handler(
                         let method = SendMessage::new(
                             chat_id,
                             format!(
-                                "FAIL\n{} click the mine",
+                                "FAIL\n{} click the minesweeper",
                                 user.username.unwrap_or(user.first_name)
                             ),
                         )
-                        .reply_to_message_id(mine[index].id);
+                        .reply_to_message_id(minesweeper[index].id);
                         context.api.execute(method).await?;
-                        mine.remove(index);
-                        if mine.is_empty() {
-                            session.remove("mine").await?;
+                        minesweeper.remove(index);
+                        if minesweeper.is_empty() {
+                            session.remove("minesweeper").await?;
                         } else {
-                            session.set("mine", &mine).await?;
+                            session.set("minesweeper", &minesweeper).await?;
                         }
                     }
                     MineSweeperGameState::OnGoing => {
-                        session.set("mine", &mine).await?;
+                        session.set("minesweeper", &minesweeper).await?;
                         let edit_reply_markup = EditMessageReplyMarkup::new(chat_id, message_id)
-                            .reply_markup(mine[index].get_inline_keyboard());
+                            .reply_markup(minesweeper[index].get_inline_keyboard());
                         match edit_message {
                             Some(edit_message) => {
                                 try_join!(

@@ -11,7 +11,7 @@
 - [x] 黑白棋 - `/othello` - 玩黑白棋
 - [x] 老虎机 - `/slot` - 转一次老虎机
 - [x] Tic-Tac-Toe - `/tictactoe` - 玩 Tic-Tac-Toe
-- [ ] 扫雷 - `/minesweeper` - 玩扫雷
+- [x] 扫雷 - `/minesweeper` - 玩扫雷
 
 ...
 
