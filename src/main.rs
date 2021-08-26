@@ -101,6 +101,8 @@ async fn run(token: String, proxy: Option<String>, webhook_port: Option<String>)
     dispatcher.add_handler(handlers::start::start_command_handler);
     dispatcher.add_handler(handlers::tictactoe::tictactoe_command_handler);
     dispatcher.add_handler(handlers::tictactoe::tictactoe_inlinekeyboard_handler);
+    dispatcher.add_handler(handlers::mine::mine_command_handler);
+    dispatcher.add_handler(handlers::mine::mine_inlinekeyboard_handler);
     let webhook_port = webhook_port
         .unwrap_or(String::from("0"))
         .parse::<u16>()

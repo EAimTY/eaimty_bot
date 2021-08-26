@@ -7,3 +7,4 @@ pub mod othello;
 pub mod slot;
 pub mod start;
 pub mod tictactoe;
+pub mod mine;
