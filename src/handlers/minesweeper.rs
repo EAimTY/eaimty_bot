@@ -288,12 +288,6 @@ impl MineSweeper {
                             is_win = false;
                         }
                     }
-                    // MineBoxesState::Flag => {
-                    //     if let MineBoxes::Mine = self.data[r * self.col + c] {
-                    //     } else {
-                    //         is_win = false;
-                    //     }
-                    // }
                     _ => continue,
                 }
             }
