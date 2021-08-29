@@ -256,7 +256,7 @@ impl Game {
     }
 }
 
-// session 中正在进行的棋局列表
+// 正在进行的棋局列表
 #[derive(Serialize, Deserialize)]
 struct GameList {
     list: HashMap<i64, Game>,
@@ -338,9 +338,9 @@ pub async fn tictactoe_inlinekeyboard_handler(
                 .get_session(SessionId::new(chat_id, 0))?;
             let mut game_list = session.get("tictactoe").await?.unwrap_or(GameList::new());
             let mut game = game_list.get(message_id);
-            // 尝试落子
+            // 尝试操作棋局
             match game.try_put(pos, user.clone()) {
-                // 落子成功
+                // 操作成功
                 Ok(game_state) => {
                     let method: EditMessageText;
                     // 匹配棋局状态
@@ -357,6 +357,7 @@ pub async fn tictactoe_inlinekeyboard_handler(
                                 ),
                             )
                             .reply_markup(game.get_inline_keyboard());
+                            // 存储棋局
                             game_list.update_and_check_empty(message_id, Some(game.clone()));
                             session.set("tictactoe", &game_list).await?;
                         }
@@ -371,6 +372,7 @@ pub async fn tictactoe_inlinekeyboard_handler(
                                     game.get_game_board()
                                 ),
                             );
+                            // 清理棋局列表
                             if game_list.update_and_check_empty(message_id, None) {
                                 session.remove("tictactoe").await?;
                             } else {
@@ -389,6 +391,7 @@ pub async fn tictactoe_inlinekeyboard_handler(
                                     user.first_name
                                 ),
                             );
+                            // 清理棋局列表
                             if game_list.update_and_check_empty(message_id, None) {
                                 session.remove("tictactoe").await?;
                             } else {
@@ -401,7 +404,7 @@ pub async fn tictactoe_inlinekeyboard_handler(
                     let method = AnswerCallbackQuery::new(query.id);
                     context.api.execute(method).await?;
                 }
-                // 落子失败
+                // 操作失败
                 Err(err) => {
                     // 以错误提示回应 callback
                     let method = AnswerCallbackQuery::new(query.id)

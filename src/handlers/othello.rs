@@ -674,9 +674,9 @@ pub async fn othello_inlinekeyboard_handler(
                 .get_session(SessionId::new(chat_id, 0))?;
             let mut game_list = session.get("othello").await?.unwrap_or(GameList::new());
             let mut game = game_list.get(message_id);
-            // 尝试落子
+            // 尝试操作棋局
             match game.try_put(pos, user.clone()) {
-                // 落子成功
+                // 操作成功
                 Ok(is_ended) => {
                     let method: EditMessageText;
                     // 棋局是否结束
@@ -690,6 +690,7 @@ pub async fn othello_inlinekeyboard_handler(
                                 game.get_game_result()
                             ),
                         );
+                        // 清理棋局列表
                         if game_list.update_and_check_empty(message_id, None) {
                             session.remove("othello").await?;
                         } else {
@@ -706,6 +707,7 @@ pub async fn othello_inlinekeyboard_handler(
                             ),
                         )
                         .reply_markup(game.get_inline_keyboard());
+                        // 存储棋局
                         game_list.update_and_check_empty(message_id, Some(game.clone()));
                         session.set("othello", &game_list).await?;
                     }
@@ -719,7 +721,7 @@ pub async fn othello_inlinekeyboard_handler(
                     let method = AnswerCallbackQuery::new(query.id)
                         .text(err.to_string())
                         .show_alert(true);
-                    context.api.execute(method).await.unwrap();
+                    context.api.execute(method).await?;
                 }
             }
             return Ok(HandlerResult::Stop);
