@@ -1,7 +1,7 @@
 use crate::{context::Context, error::ErrorHandler};
 use carapax::{
     handler,
-    methods::{AnswerCallbackQuery, EditMessageReplyMarkup, EditMessageText, SendMessage},
+    methods::{AnswerCallbackQuery, EditMessageText, SendMessage},
     session::SessionId,
     types::{
         CallbackQuery, Command, InlineKeyboardButton, InlineKeyboardButtonKind,
@@ -10,120 +10,212 @@ use carapax::{
     HandlerResult,
 };
 use serde::{Deserialize, Serialize};
-use tokio::try_join;
+use std::{collections::HashMap, error::Error, fmt};
 
+// 棋子类型
 #[derive(Copy, Clone, PartialEq, Serialize, Deserialize)]
-enum TicTacToePiece {
+enum Piece {
     Cross,
     Nought,
     Empty,
 }
 
-impl TicTacToePiece {
-    fn as_str(&self) -> &str {
+impl fmt::Display for Piece {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            TicTacToePiece::Cross => "❌",
-            TicTacToePiece::Nought => "⭕️",
-            TicTacToePiece::Empty => "⬜",
+            Piece::Cross => write!(f, "❌"),
+            Piece::Nought => write!(f, "⭕️"),
+            Piece::Empty => write!(f, "⬜"),
         }
     }
 }
 
-enum TicTacToeGameState {
+// 棋子位置
+#[derive(Clone, Copy)]
+struct PiecePosition {
+    row: usize,
+    col: usize,
+}
+
+impl PiecePosition {
+    fn new(row: usize, col: usize) -> Self {
+        Self { row, col }
+    }
+}
+
+// 棋局状态
+enum GameState {
     OnGoing,
     Tie,
     Win,
 }
 
-#[derive(Serialize, Deserialize)]
-struct TicTacToe {
-    id: i64,
-    data: [[TicTacToePiece; 3]; 3],
-    next: TicTacToePiece,
+// 落子失败类型
+#[derive(Debug)]
+enum ActionError {
+    CellNotEmpty,
+    NotYourTurn,
+}
+
+impl fmt::Display for ActionError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ActionError::CellNotEmpty => write!(f, "请在空白处落子"),
+            ActionError::NotYourTurn => write!(f, "不是你的回合"),
+        }
+    }
+}
+
+impl Error for ActionError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        None
+    }
+}
+
+// 棋局
+#[derive(Clone, Serialize, Deserialize)]
+struct Game {
+    data: [[Piece; 3]; 3],
+    turn: Piece,
     player_cross: Option<User>,
     player_nought: Option<User>,
 }
 
-impl TicTacToe {
-    fn new(id: i64) -> TicTacToe {
-        TicTacToe {
-            id: id,
-            data: [[TicTacToePiece::Empty; 3]; 3],
-            next: TicTacToePiece::Cross,
+impl Game {
+    fn new() -> Self {
+        Self {
+            data: [[Piece::Empty; 3]; 3],
+            turn: Piece::Cross,
             player_cross: None,
             player_nought: None,
         }
     }
 
-    fn get(&self, pos: &(usize, usize)) -> TicTacToePiece {
-        self.data[pos.0][pos.1]
+    // 获取指定位置的棋子类型
+    fn get(&self, pos: PiecePosition) -> Piece {
+        self.data[pos.row][pos.col]
     }
 
-    fn set(&mut self, pos: &(usize, usize), piece: TicTacToePiece) -> bool {
-        if self.get(&(pos.0, pos.1)) == TicTacToePiece::Empty {
-            self.data[pos.0][pos.1] = piece;
-            return true;
+    // 设定指定位子的棋子，失败时返回 Err(ActionError::CellNotEmpty)
+    fn set(&mut self, pos: PiecePosition, piece: Piece) -> Result<(), ActionError> {
+        if self.get(pos) == Piece::Empty {
+            self.data[pos.row][pos.col] = piece;
+            return Ok(());
         }
-        false
+        Err(ActionError::CellNotEmpty)
     }
 
-    fn next(&mut self) {
-        self.next = match self.next {
-            TicTacToePiece::Cross => TicTacToePiece::Nought,
-            _ => TicTacToePiece::Cross,
-        };
-    }
-
-    fn is_ended(&self) -> TicTacToeGameState {
-        for row in 0..3 {
-            if self.get(&(row, 0)) != TicTacToePiece::Empty
-                && self.get(&(row, 0)) == self.get(&(row, 1))
-                && self.get(&(row, 0)) == self.get(&(row, 2))
-            {
-                return TicTacToeGameState::Win;
+    // 尝试落子，成功时返回 Ok(棋局状态)，失败时返回 Err(ActionError)
+    fn try_put(&mut self, pos: PiecePosition, player: User) -> Result<GameState, ActionError> {
+        // 轮到 Cross 落子
+        if let Piece::Cross = self.turn {
+            // 有玩家作为 Cross
+            if let Some(player_cross) = &self.player_cross {
+                // 验证落子发起者
+                if &player == player_cross {
+                    match self.set(pos, Piece::Cross) {
+                        Ok(_) => self.next_turn(),
+                        Err(err) => return Err(err),
+                    }
+                } else {
+                    return Err(ActionError::NotYourTurn);
+                }
+            // 没有玩家作为 Cross
+            } else {
+                match self.set(pos, Piece::Cross) {
+                    Ok(_) => {
+                        self.player_cross = Some(player);
+                        self.next_turn();
+                    }
+                    Err(err) => return Err(err),
+                }
             }
-        }
-        for col in 0..3 {
-            if self.get(&(0, col)) != TicTacToePiece::Empty
-                && self.get(&(0, col)) == self.get(&(1, col))
-                && self.get(&(0, col)) == self.get(&(2, col))
-            {
-                return TicTacToeGameState::Win;
-            }
-        }
-        if (self.get(&(0, 0)) != TicTacToePiece::Empty
-            && self.get(&(0, 0)) == self.get(&(1, 1))
-            && self.get(&(0, 0)) == self.get(&(2, 2)))
-            || (self.get(&(0, 2)) != TicTacToePiece::Empty
-                && self.get(&(0, 2)) == self.get(&(1, 1))
-                && self.get(&(0, 2)) == self.get(&(2, 0)))
-        {
-            return TicTacToeGameState::Win;
-        }
-        let mut is_full = true;
-        for row in 0..3 {
-            for col in 0..3 {
-                if self.get(&(row, col)) == TicTacToePiece::Empty {
-                    is_full = false;
+        // 轮到 Nought 落子
+        } else {
+            if let Some(player_nought) = &self.player_nought {
+                if &player == player_nought {
+                    match self.set(pos, Piece::Nought) {
+                        Ok(_) => self.next_turn(),
+                        Err(err) => return Err(err),
+                    }
+                } else {
+                    return Err(ActionError::NotYourTurn);
+                }
+            } else {
+                match self.set(pos, Piece::Nought) {
+                    Ok(_) => {
+                        self.player_nought = Some(player);
+                        self.next_turn();
+                    }
+                    Err(err) => return Err(err),
                 }
             }
         }
-        if is_full {
-            return TicTacToeGameState::Tie;
-        }
-        TicTacToeGameState::OnGoing
+        // 返回棋局状态
+        Ok(self.get_game_state())
     }
 
+    fn next_turn(&mut self) {
+        self.turn = match self.turn {
+            Piece::Cross => Piece::Nought,
+            _ => Piece::Cross,
+        };
+    }
+
+    // 计算棋局状态
+    fn get_game_state(&self) -> GameState {
+        // 纵向检查
+        for row in 0..3 {
+            if self.get(PiecePosition::new(row, 0)) != Piece::Empty
+                && self.get(PiecePosition::new(row, 0)) == self.get(PiecePosition::new(row, 1))
+                && self.get(PiecePosition::new(row, 0)) == self.get(PiecePosition::new(row, 2))
+            {
+                return GameState::Win;
+            }
+        }
+        // 横向检查
+        for col in 0..3 {
+            if self.get(PiecePosition::new(0, col)) != Piece::Empty
+                && self.get(PiecePosition::new(0, col)) == self.get(PiecePosition::new(1, col))
+                && self.get(PiecePosition::new(0, col)) == self.get(PiecePosition::new(2, col))
+            {
+                return GameState::Win;
+            }
+        }
+        // 对角线检查
+        if (self.get(PiecePosition::new(0, 0)) != Piece::Empty
+            && self.get(PiecePosition::new(0, 0)) == self.get(PiecePosition::new(1, 1))
+            && self.get(PiecePosition::new(0, 0)) == self.get(PiecePosition::new(2, 2)))
+            || (self.get(PiecePosition::new(0, 2)) != Piece::Empty
+                && self.get(PiecePosition::new(0, 2)) == self.get(PiecePosition::new(1, 1))
+                && self.get(PiecePosition::new(0, 2)) == self.get(PiecePosition::new(2, 0)))
+        {
+            return GameState::Win;
+        }
+        // 检查棋盘是否已满
+        let mut is_all_filled = true;
+        for row in 0..3 {
+            for col in 0..3 {
+                if self.get(PiecePosition::new(row, col)) == Piece::Empty {
+                    is_all_filled = false;
+                }
+            }
+        }
+        if is_all_filled {
+            return GameState::Tie;
+        }
+        GameState::OnGoing
+    }
+
+    // 获取按钮列表
     fn get_inline_keyboard(&self) -> InlineKeyboardMarkup {
         let mut keyboad: Vec<Vec<InlineKeyboardButton>> = Vec::new();
         for col in 0..3 {
             let mut keyboad_col: Vec<InlineKeyboardButton> = Vec::new();
             for row in 0..3 {
                 keyboad_col.push(InlineKeyboardButton::new(
-                    self.get(&(row, col)).as_str(),
-                    InlineKeyboardButtonKind::CallbackData(
-                        String::from("tictactoe_") + &row.to_string() + "_" + &col.to_string(),
-                    ),
+                    self.get(PiecePosition::new(row, col)).to_string(),
+                    InlineKeyboardButtonKind::CallbackData(format!("tictactoe_{}_{}", row, col)),
                 ));
             }
             keyboad.push(keyboad_col);
@@ -131,50 +223,85 @@ impl TicTacToe {
         InlineKeyboardMarkup::from(keyboad)
     }
 
-    fn print_players(&self) -> String {
+    // 获取玩家
+    fn get_players(&self) -> String {
         let mut players = String::new();
         if let Some(player_cross) = &self.player_cross {
             players.push_str("❌：");
-            if let Some(username) = &player_cross.username {
-                players += &username;
-            }
+            players += &player_cross.first_name;
             if let Some(player_nought) = &self.player_nought {
                 players.push_str("\n⭕️：");
-                if let Some(username) = &player_nought.username {
-                    players += &username;
-                }
+                players += &player_nought.first_name;
             }
         }
         players
     }
 
-    fn print(&self) -> String {
-        let mut board = String::from("\n");
+    // 获取玩家
+    fn get_next_player(&self) -> String {
+        self.turn.to_string()
+    }
+
+    // 获取棋盘
+    fn get_game_board(&self) -> String {
+        let mut board = String::new();
         for col in 0..3 {
             for row in 0..3 {
-                board.push_str(self.data[row][col].as_str());
+                board.push_str(&self.data[row][col].to_string());
             }
             board.push_str("\n");
         }
-        board.push_str("\n");
         board
     }
 }
 
-trait TicTacToeVec {
-    fn get_index(&mut self, id: i64) -> usize;
+// session 中正在进行的棋局列表
+#[derive(Serialize, Deserialize)]
+struct GameList {
+    list: HashMap<i64, Game>,
 }
 
-impl TicTacToeVec for Vec<TicTacToe> {
-    fn get_index(&mut self, id: i64) -> usize {
-        match self.iter().position(|v| v.id == id) {
-            Some(index) => index,
-            None => {
-                self.push(TicTacToe::new(id));
-                self.len() - 1
+impl GameList {
+    fn new() -> Self {
+        Self {
+            list: HashMap::new(),
+        }
+    }
+
+    fn get(&mut self, id: i64) -> Game {
+        self.list.entry(id).or_insert(Game::new()).clone()
+    }
+
+    fn update_and_check_empty(&mut self, id: i64, game: Option<Game>) -> bool {
+        if let Some(game) = game {
+            self.list.insert(id, game);
+            false
+        } else {
+            self.list.remove(&id);
+            self.list.is_empty()
+        }
+    }
+}
+
+// 尝试解析 callback data，返回目标落子位置
+fn try_parse_callback(data: String) -> Option<PiecePosition> {
+    if data.starts_with("tictactoe_") {
+        let mut data = data[10..].split('_');
+        if let Some(row) = data.next() {
+            if let Ok(row) = row.parse::<usize>() {
+                if let Some(col) = data.next() {
+                    if let Ok(col) = col.parse::<usize>() {
+                        if row < 3 && col < 3 {
+                            if let None = data.next() {
+                                return Some(PiecePosition { row, col });
+                            }
+                        }
+                    }
+                }
             }
         }
     }
+    None
 }
 
 #[handler(command = "/tictactoe")]
@@ -184,12 +311,10 @@ pub async fn tictactoe_command_handler(
 ) -> Result<HandlerResult, ErrorHandler> {
     let message = command.get_message();
     let chat_id = message.get_chat_id();
-    if let Some(_) = message.get_user() {
-        let method = SendMessage::new(chat_id, "Tic-Tac-Toe").reply_markup(
-            ReplyMarkup::InlineKeyboardMarkup(TicTacToe::new(0).get_inline_keyboard()),
-        );
-        context.api.execute(method).await?;
-    }
+    let method = SendMessage::new(chat_id, "Tic-Tac-Toe").reply_markup(
+        ReplyMarkup::InlineKeyboardMarkup(Game::new().get_inline_keyboard()),
+    );
+    context.api.execute(method).await?;
     Ok(HandlerResult::Stop)
 }
 
@@ -198,158 +323,93 @@ pub async fn tictactoe_inlinekeyboard_handler(
     context: &Context,
     query: CallbackQuery,
 ) -> Result<HandlerResult, ErrorHandler> {
-    let data = query.data;
-    if let Some(data) = data {
-        let cell: Option<(usize, usize)> = match data.as_str() {
-            "tictactoe_0_0" => Some((0, 0)),
-            "tictactoe_0_1" => Some((0, 1)),
-            "tictactoe_0_2" => Some((0, 2)),
-            "tictactoe_1_0" => Some((1, 0)),
-            "tictactoe_1_1" => Some((1, 1)),
-            "tictactoe_1_2" => Some((1, 2)),
-            "tictactoe_2_0" => Some((2, 0)),
-            "tictactoe_2_1" => Some((2, 1)),
-            "tictactoe_2_2" => Some((2, 2)),
-            _ => None,
-        };
-        if let Some(cell) = cell {
+    // 检查非空 query
+    if let Some(data) = query.data {
+        // 尝试 parse callback data
+        if let Some(pos) = try_parse_callback(data) {
             let message = query.message.unwrap();
             let chat_id = message.get_chat_id();
             let message_id = message.id;
-            if let Some(message_author) = message.get_user() {
-                let user = query.from;
-                let mut session = context
-                    .session_manager
-                    .get_session(SessionId::new(chat_id, message_author.id))?;
-                let mut tictactoe = session.get("tictactoe").await?.unwrap_or(Vec::new());
-                let index = tictactoe.get_index(message_id);
-                let mut edit_message: Option<EditMessageText> = None;
-                let mut answer_callback_query: Option<&str> = None;
-                match tictactoe[index].next {
-                    TicTacToePiece::Cross => match &tictactoe[index].player_cross {
-                        Some(player_cross) => {
-                            if &user == player_cross {
-                                if tictactoe[index].set(&cell, TicTacToePiece::Cross) {
-                                    tictactoe[index].next();
-                                } else {
-                                    answer_callback_query = Some("请在空白处落子");
-                                }
+            let user = query.from;
+            // 从 session 获取棋局
+            let mut session = context
+                .session_manager
+                .get_session(SessionId::new(chat_id, 0))?;
+            let mut game_list = session.get("tictactoe").await?.unwrap_or(GameList::new());
+            let mut game = game_list.get(message_id);
+            // 尝试落子
+            match game.try_put(pos, user.clone()) {
+                // 落子成功
+                Ok(game_state) => {
+                    let method: EditMessageText;
+                    // 匹配棋局状态
+                    match game_state {
+                        // 棋局正在进行
+                        GameState::OnGoing => {
+                            method = EditMessageText::new(
+                                chat_id,
+                                message_id,
+                                format!(
+                                    "Tic-Tac-Toe\n\n{}\n\n轮到：{}",
+                                    game.get_players(),
+                                    game.get_next_player()
+                                ),
+                            )
+                            .reply_markup(game.get_inline_keyboard());
+                            game_list.update_and_check_empty(message_id, Some(game.clone()));
+                            session.set("tictactoe", &game_list).await?;
+                        }
+                        // 平局
+                        GameState::Tie => {
+                            method = EditMessageText::new(
+                                chat_id,
+                                message_id,
+                                format!(
+                                    "Tic-Tac-Toe\n\n{}\n\n{}平局",
+                                    game.get_players(),
+                                    game.get_game_board()
+                                ),
+                            );
+                            if game_list.update_and_check_empty(message_id, None) {
+                                session.remove("tictactoe").await?;
                             } else {
-                                answer_callback_query = Some("不是您的回合");
+                                session.set("tictactoe", &game_list).await?;
                             }
                         }
-                        None => {
-                            if tictactoe[index].set(&cell, TicTacToePiece::Cross) {
-                                tictactoe[index].player_cross = Some(user.clone());
-                                tictactoe[index].next();
-                                edit_message = Some(EditMessageText::new(
-                                    chat_id,
-                                    message_id,
-                                    String::from("Tic-Tac-Toe\n")
-                                        + &tictactoe[index].print_players(),
-                                ));
+                        // 玩家获胜
+                        GameState::Win => {
+                            method = EditMessageText::new(
+                                chat_id,
+                                message_id,
+                                format!(
+                                    "Tic-Tac-Toe\n\n{}\n\n{}\n\n{} 赢了",
+                                    game.get_players(),
+                                    game.get_game_board(),
+                                    user.first_name
+                                ),
+                            );
+                            if game_list.update_and_check_empty(message_id, None) {
+                                session.remove("tictactoe").await?;
                             } else {
-                                answer_callback_query = Some("请在空白处落子");
+                                session.set("tictactoe", &game_list).await?;
                             }
                         }
-                    },
-                    TicTacToePiece::Nought => match &tictactoe[index].player_nought {
-                        Some(player_nought) => {
-                            if &user == player_nought {
-                                if tictactoe[index].set(&cell, TicTacToePiece::Nought) {
-                                    tictactoe[index].next();
-                                } else {
-                                    answer_callback_query = Some("请在空白处落子");
-                                }
-                            } else {
-                                answer_callback_query = Some("不是您的回合");
-                            }
-                        }
-                        None => {
-                            if tictactoe[index].set(&cell, TicTacToePiece::Nought) {
-                                tictactoe[index].player_nought = Some(user.clone());
-                                tictactoe[index].next();
-                                edit_message = Some(EditMessageText::new(
-                                    chat_id,
-                                    message_id,
-                                    String::from("Tic-Tac-Toe\n")
-                                        + &tictactoe[index].print_players(),
-                                ));
-                            } else {
-                                answer_callback_query = Some("请在空白处落子");
-                            }
-                        }
-                    },
-                    _ => (),
+                    }
+                    context.api.execute(method).await?;
+                    // 回应 callback
+                    let method = AnswerCallbackQuery::new(query.id);
+                    context.api.execute(method).await?;
                 }
-                match answer_callback_query {
-                    Some(message) => {
-                        let method = AnswerCallbackQuery::new(query.id)
-                            .text(message)
-                            .show_alert(true);
-                        context.api.execute(method).await?;
-                    }
-                    None => {
-                        let method = AnswerCallbackQuery::new(query.id);
-                        context.api.execute(method).await?;
-                    }
-                }
-                match tictactoe[index].is_ended() {
-                    TicTacToeGameState::OnGoing => {
-                        session.set("tictactoe", &tictactoe).await?;
-                        let edit_reply_markup = EditMessageReplyMarkup::new(chat_id, message_id)
-                            .reply_markup(tictactoe[index].get_inline_keyboard());
-                        match edit_message {
-                            Some(edit_message) => {
-                                try_join!(
-                                    context.api.execute(edit_message),
-                                    context.api.execute(edit_reply_markup)
-                                )?;
-                            }
-                            None => {
-                                context.api.execute(edit_reply_markup).await?;
-                            }
-                        }
-                    }
-                    TicTacToeGameState::Tie => {
-                        let method = EditMessageText::new(
-                            chat_id,
-                            message_id,
-                            String::from("Tic-Tac-Toe\n")
-                                + &tictactoe[index].print_players()
-                                + &String::from("\n")
-                                + &tictactoe[index].print()
-                                + &String::from("平局"),
-                        );
-                        context.api.execute(method).await?;
-                        tictactoe.remove(index);
-                        if tictactoe.is_empty() {
-                            session.remove("tictactoe").await?;
-                        } else {
-                            session.set("tictactoe", &tictactoe).await?;
-                        }
-                    }
-                    TicTacToeGameState::Win => {
-                        let method = EditMessageText::new(
-                            chat_id,
-                            message_id,
-                            String::from("Tic-Tac-Toe\n")
-                                + &tictactoe[index].print_players()
-                                + &String::from("\n")
-                                + &tictactoe[index].print()
-                                + &user.username.unwrap_or(String::from(""))
-                                + &String::from(" 赢了"),
-                        );
-                        context.api.execute(method).await?;
-                        tictactoe.remove(index);
-                        if tictactoe.is_empty() {
-                            session.remove("tictactoe").await?;
-                        } else {
-                            session.set("tictactoe", &tictactoe).await?;
-                        }
-                    }
+                // 落子失败
+                Err(err) => {
+                    // 以错误提示回应 callback
+                    let method = AnswerCallbackQuery::new(query.id)
+                        .text(err.to_string())
+                        .show_alert(true);
+                    context.api.execute(method).await?;
                 }
             }
+            return Ok(HandlerResult::Stop);
         }
     }
     Ok(HandlerResult::Continue)
