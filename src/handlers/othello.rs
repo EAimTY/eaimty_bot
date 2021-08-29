@@ -1,7 +1,7 @@
 use crate::{context::Context, error::ErrorHandler};
 use carapax::{
     handler,
-    methods::{AnswerCallbackQuery, EditMessageReplyMarkup, EditMessageText, SendMessage},
+    methods::{AnswerCallbackQuery, EditMessageText, SendMessage},
     session::SessionId,
     types::{
         CallbackQuery, Command, InlineKeyboardButton, InlineKeyboardButtonKind,
@@ -10,79 +10,119 @@ use carapax::{
     HandlerResult,
 };
 use serde::{Deserialize, Serialize};
-use std::cmp::{max, min, Ordering};
-use tokio::try_join;
+use std::{cmp, collections::HashMap, error::Error, fmt};
 
+// 棋子类型
 #[derive(Copy, Clone, PartialEq, Serialize, Deserialize)]
-enum OthelloPiece {
+enum Piece {
     Black,
     White,
     Empty,
 }
 
-impl OthelloPiece {
-    fn as_str(&self) -> &str {
+impl Piece {
+    fn reverse(&self) -> Self {
         match self {
-            OthelloPiece::Black => "⚫",
-            OthelloPiece::White => "⚪",
-            OthelloPiece::Empty => "➖",
-        }
-    }
-
-    fn reverse(&self) -> OthelloPiece {
-        match self {
-            OthelloPiece::White => OthelloPiece::Black,
-            OthelloPiece::Black => OthelloPiece::White,
-            OthelloPiece::Empty => OthelloPiece::Empty,
+            Piece::White => Piece::Black,
+            Piece::Black => Piece::White,
+            Piece::Empty => Piece::Empty,
         }
     }
 }
 
-#[derive(Serialize, Deserialize)]
-struct Othello {
-    id: i64,
-    data: [[OthelloPiece; 8]; 8],
-    next: OthelloPiece,
+impl fmt::Display for Piece {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Piece::Black => write!(f, "⚫"),
+            Piece::White => write!(f, "⚪"),
+            Piece::Empty => write!(f, "➖"),
+        }
+    }
+}
+
+// 棋子位置
+#[derive(Clone, Copy)]
+struct PiecePosition {
+    row: usize,
+    col: usize,
+}
+
+impl PiecePosition {
+    fn new(row: usize, col: usize) -> Self {
+        Self { row, col }
+    }
+}
+
+// 落子失败类型
+#[derive(Debug)]
+enum ActionError {
+    Unplaceable,
+    NotYourTurn,
+}
+
+impl fmt::Display for ActionError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ActionError::Unplaceable => write!(f, "无法在此落子"),
+            ActionError::NotYourTurn => write!(f, "不是你的回合"),
+        }
+    }
+}
+
+impl Error for ActionError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        None
+    }
+}
+
+// 棋局
+#[derive(Clone, Serialize, Deserialize)]
+struct Game {
+    data: [[Piece; 8]; 8],
+    turn: Piece,
     player_black: Option<User>,
     player_white: Option<User>,
 }
 
-impl Othello {
-    fn new(id: i64) -> Othello {
-        Othello {
-            id: id,
+impl Game {
+    fn new() -> Self {
+        Self {
             data: {
-                let mut data = [[OthelloPiece::Empty; 8]; 8];
-                data[3][3] = OthelloPiece::Black;
-                data[3][4] = OthelloPiece::White;
-                data[4][3] = OthelloPiece::White;
-                data[4][4] = OthelloPiece::Black;
+                let mut data = [[Piece::Empty; 8]; 8];
+                data[3][3] = Piece::Black;
+                data[3][4] = Piece::White;
+                data[4][3] = Piece::White;
+                data[4][4] = Piece::Black;
                 data
             },
-            next: OthelloPiece::Black,
+            turn: Piece::Black,
             player_black: None,
             player_white: None,
         }
     }
 
-    fn get(&self, pos: &(usize, usize)) -> OthelloPiece {
-        self.data[pos.0][pos.1]
+    // 获取指定位置的棋子类型
+    fn get(&self, pos: PiecePosition) -> Piece {
+        self.data[pos.row][pos.col]
     }
 
-    fn set(&mut self, pos: &(usize, usize), piece: OthelloPiece) -> bool {
+    // 设定指定位子的棋子，失败时返回 Err(ActionError::Unplaceable)
+    fn set(&mut self, pos: PiecePosition, piece: Piece) -> Result<(), ActionError> {
         let mut is_changed = false;
-        if self.data[pos.0][pos.1] == OthelloPiece::Empty {
-            if pos.0 > 1 && self.get(&(pos.0 - 1, pos.1)) == piece.reverse() {
-                for n in (0..(pos.0 - 1)).rev() {
-                    if self.get(&(n, pos.1)) == OthelloPiece::Empty {
+        if self.data[pos.row][pos.col] == Piece::Empty {
+            // 向上查找
+            if pos.row > 1 && self.get(PiecePosition::new(pos.row - 1, pos.col)) == piece.reverse()
+            {
+                for n in (0..(pos.row - 1)).rev() {
+                    if self.get(PiecePosition::new(n, pos.col)) == Piece::Empty {
                         break;
                     }
-                    if self.get(&(n, pos.1)) == piece {
-                        self.data[pos.0][pos.1] = piece;
+                    if self.get(PiecePosition::new(n, pos.col)) == piece {
+                        self.data[pos.row][pos.col] = piece;
                         let mut n_rev = n + 1;
                         loop {
-                            if self.get(&(n_rev, pos.1)) == piece.reverse() {
-                                self.data[n_rev][pos.1] = piece;
+                            if self.get(PiecePosition::new(n_rev, pos.col)) == piece.reverse() {
+                                self.data[n_rev][pos.col] = piece;
                                 n_rev += 1;
                             } else {
                                 break;
@@ -93,17 +133,19 @@ impl Othello {
                     }
                 }
             }
-            if pos.0 < 6 && self.get(&(pos.0 + 1, pos.1)) == piece.reverse() {
-                for n in (pos.0 + 1)..8 {
-                    if self.get(&(n, pos.1)) == OthelloPiece::Empty {
+            // 向下查找
+            if pos.row < 6 && self.get(PiecePosition::new(pos.row + 1, pos.col)) == piece.reverse()
+            {
+                for n in (pos.row + 1)..8 {
+                    if self.get(PiecePosition::new(n, pos.col)) == Piece::Empty {
                         break;
                     }
-                    if self.get(&(n, pos.1)) == piece {
-                        self.data[pos.0][pos.1] = piece;
+                    if self.get(PiecePosition::new(n, pos.col)) == piece {
+                        self.data[pos.row][pos.col] = piece;
                         let mut n_rev = n - 1;
                         loop {
-                            if self.get(&(n_rev, pos.1)) == piece.reverse() {
-                                self.data[n_rev][pos.1] = piece;
+                            if self.get(PiecePosition::new(n_rev, pos.col)) == piece.reverse() {
+                                self.data[n_rev][pos.col] = piece;
                                 n_rev -= 1;
                             } else {
                                 break;
@@ -114,17 +156,19 @@ impl Othello {
                     }
                 }
             }
-            if pos.1 > 1 && self.get(&(pos.0, pos.1 - 1)) == piece.reverse() {
-                for n in (0..(pos.1 - 1)).rev() {
-                    if self.get(&(pos.0, n)) == OthelloPiece::Empty {
+            // 向左查找
+            if pos.col > 1 && self.get(PiecePosition::new(pos.row, pos.col - 1)) == piece.reverse()
+            {
+                for n in (0..(pos.col - 1)).rev() {
+                    if self.get(PiecePosition::new(pos.row, n)) == Piece::Empty {
                         break;
                     }
-                    if self.get(&(pos.0, n)) == piece {
-                        self.data[pos.0][pos.1] = piece;
+                    if self.get(PiecePosition::new(pos.row, n)) == piece {
+                        self.data[pos.row][pos.col] = piece;
                         let mut n_rev = n + 1;
                         loop {
-                            if self.get(&(pos.0, n_rev)) == piece.reverse() {
-                                self.data[pos.0][n_rev] = piece;
+                            if self.get(PiecePosition::new(pos.row, n_rev)) == piece.reverse() {
+                                self.data[pos.row][n_rev] = piece;
                                 n_rev += 1;
                             } else {
                                 break;
@@ -135,17 +179,19 @@ impl Othello {
                     }
                 }
             }
-            if pos.1 < 6 && self.get(&(pos.0, pos.1 + 1)) == piece.reverse() {
-                for n in (pos.1 + 1)..8 {
-                    if self.get(&(pos.0, n)) == OthelloPiece::Empty {
+            // 向右查找
+            if pos.col < 6 && self.get(PiecePosition::new(pos.row, pos.col + 1)) == piece.reverse()
+            {
+                for n in (pos.col + 1)..8 {
+                    if self.get(PiecePosition::new(pos.row, n)) == Piece::Empty {
                         break;
                     }
-                    if self.get(&(pos.0, n)) == piece {
-                        self.data[pos.0][pos.1] = piece;
+                    if self.get(PiecePosition::new(pos.row, n)) == piece {
+                        self.data[pos.row][pos.col] = piece;
                         let mut n_rev = n - 1;
                         loop {
-                            if self.get(&(pos.0, n_rev)) == piece.reverse() {
-                                self.data[pos.0][n_rev] = piece;
+                            if self.get(PiecePosition::new(pos.row, n_rev)) == piece.reverse() {
+                                self.data[pos.row][n_rev] = piece;
                                 n_rev -= 1;
                             } else {
                                 break;
@@ -156,17 +202,25 @@ impl Othello {
                     }
                 }
             }
-            if pos.0 > 1 && pos.1 > 1 && self.get(&(pos.0 - 1, pos.1 - 1)) == piece.reverse() {
-                for n in 0..(min(pos.0, pos.1) - 1) {
-                    if self.get(&(pos.0 - n - 2, pos.1 - n - 2)) == OthelloPiece::Empty {
+            // 向左上查找
+            if pos.row > 1
+                && pos.col > 1
+                && self.get(PiecePosition::new(pos.row - 1, pos.col - 1)) == piece.reverse()
+            {
+                for n in 0..(cmp::min(pos.row, pos.col) - 1) {
+                    if self.get(PiecePosition::new(pos.row - n - 2, pos.col - n - 2))
+                        == Piece::Empty
+                    {
                         break;
                     }
-                    if self.get(&(pos.0 - n - 2, pos.1 - n - 2)) == piece {
-                        self.data[pos.0][pos.1] = piece;
+                    if self.get(PiecePosition::new(pos.row - n - 2, pos.col - n - 2)) == piece {
+                        self.data[pos.row][pos.col] = piece;
                         let mut n_rev = n + 1;
                         loop {
-                            if self.get(&(pos.0 - n_rev, pos.1 - n_rev)) == piece.reverse() {
-                                self.data[pos.0 - n_rev][pos.1 - n_rev] = piece;
+                            if self.get(PiecePosition::new(pos.row - n_rev, pos.col - n_rev))
+                                == piece.reverse()
+                            {
+                                self.data[pos.row - n_rev][pos.col - n_rev] = piece;
                                 n_rev -= 1;
                             } else {
                                 break;
@@ -177,17 +231,25 @@ impl Othello {
                     }
                 }
             }
-            if pos.0 > 1 && pos.1 < 6 && self.get(&(pos.0 - 1, pos.1 + 1)) == piece.reverse() {
-                for n in 0..(min(pos.0, 7 - pos.1) - 1) {
-                    if self.get(&(pos.0 - n - 2, pos.1 + n + 2)) == OthelloPiece::Empty {
+            // 向左下查找
+            if pos.row > 1
+                && pos.col < 6
+                && self.get(PiecePosition::new(pos.row - 1, pos.col + 1)) == piece.reverse()
+            {
+                for n in 0..(cmp::min(pos.row, 7 - pos.col) - 1) {
+                    if self.get(PiecePosition::new(pos.row - n - 2, pos.col + n + 2))
+                        == Piece::Empty
+                    {
                         break;
                     }
-                    if self.get(&(pos.0 - n - 2, pos.1 + n + 2)) == piece {
-                        self.data[pos.0][pos.1] = piece;
+                    if self.get(PiecePosition::new(pos.row - n - 2, pos.col + n + 2)) == piece {
+                        self.data[pos.row][pos.col] = piece;
                         let mut n_rev = n + 1;
                         loop {
-                            if self.get(&(pos.0 - n_rev, pos.1 + n_rev)) == piece.reverse() {
-                                self.data[pos.0 - n_rev][pos.1 + n_rev] = piece;
+                            if self.get(PiecePosition::new(pos.row - n_rev, pos.col + n_rev))
+                                == piece.reverse()
+                            {
+                                self.data[pos.row - n_rev][pos.col + n_rev] = piece;
                                 n_rev -= 1;
                             } else {
                                 break;
@@ -198,17 +260,25 @@ impl Othello {
                     }
                 }
             }
-            if pos.0 < 6 && pos.1 > 1 && self.get(&(pos.0 + 1, pos.1 - 1)) == piece.reverse() {
-                for n in 0..(min(7 - pos.0, pos.1) - 1) {
-                    if self.get(&(pos.0 + n + 2, pos.1 - n - 2)) == OthelloPiece::Empty {
+            // 向右上查找
+            if pos.row < 6
+                && pos.col > 1
+                && self.get(PiecePosition::new(pos.row + 1, pos.col - 1)) == piece.reverse()
+            {
+                for n in 0..(cmp::min(7 - pos.row, pos.col) - 1) {
+                    if self.get(PiecePosition::new(pos.row + n + 2, pos.col - n - 2))
+                        == Piece::Empty
+                    {
                         break;
                     }
-                    if self.get(&(pos.0 + n + 2, pos.1 - n - 2)) == piece {
-                        self.data[pos.0][pos.1] = piece;
+                    if self.get(PiecePosition::new(pos.row + n + 2, pos.col - n - 2)) == piece {
+                        self.data[pos.row][pos.col] = piece;
                         let mut n_rev = n + 1;
                         loop {
-                            if self.get(&(pos.0 + n_rev, pos.1 - n_rev)) == piece.reverse() {
-                                self.data[pos.0 + n_rev][pos.1 - n_rev] = piece;
+                            if self.get(PiecePosition::new(pos.row + n_rev, pos.col - n_rev))
+                                == piece.reverse()
+                            {
+                                self.data[pos.row + n_rev][pos.col - n_rev] = piece;
                                 n_rev -= 1;
                             } else {
                                 break;
@@ -219,17 +289,25 @@ impl Othello {
                     }
                 }
             }
-            if pos.0 < 6 && pos.1 < 6 && self.get(&(pos.0 + 1, pos.1 + 1)) == piece.reverse() {
-                for n in 0..(6 - max(pos.0, pos.1)) {
-                    if self.get(&(pos.0 + n + 2, pos.1 + n + 2)) == OthelloPiece::Empty {
+            // 向右下查找
+            if pos.row < 6
+                && pos.col < 6
+                && self.get(PiecePosition::new(pos.row + 1, pos.col + 1)) == piece.reverse()
+            {
+                for n in 0..(6 - cmp::max(pos.row, pos.col)) {
+                    if self.get(PiecePosition::new(pos.row + n + 2, pos.col + n + 2))
+                        == Piece::Empty
+                    {
                         break;
                     }
-                    if self.get(&(pos.0 + n + 2, pos.1 + n + 2)) == piece {
-                        self.data[pos.0][pos.1] = piece;
+                    if self.get(PiecePosition::new(pos.row + n + 2, pos.col + n + 2)) == piece {
+                        self.data[pos.row][pos.col] = piece;
                         let mut n_rev = n + 1;
                         loop {
-                            if self.get(&(pos.0 + n_rev, pos.1 + n_rev)) == piece.reverse() {
-                                self.data[pos.0 + n_rev][pos.1 + n_rev] = piece;
+                            if self.get(PiecePosition::new(pos.row + n_rev, pos.col + n_rev))
+                                == piece.reverse()
+                            {
+                                self.data[pos.row + n_rev][pos.col + n_rev] = piece;
                                 n_rev -= 1;
                             } else {
                                 break;
@@ -241,96 +319,122 @@ impl Othello {
                 }
             }
         }
-        is_changed
+        if is_changed {
+            Ok(())
+        } else {
+            Err(ActionError::Unplaceable)
+        }
     }
 
-    fn next(&mut self) {
-        self.next = match self.next {
-            OthelloPiece::Black => OthelloPiece::White,
-            _ => OthelloPiece::Black,
-        };
-    }
-
-    fn can_put(&self, piece: OthelloPiece) -> bool {
+    // 检查某一方是否可以落子
+    fn is_able_to_put(&self, piece: Piece) -> bool {
         for row in 0..8 {
             for col in 0..8 {
-                if self.get(&(row, col)) == OthelloPiece::Empty {
-                    if row > 1 && self.get(&(row - 1, col)) == piece.reverse() {
+                if self.get(PiecePosition::new(row, col)) == Piece::Empty {
+                    // 向上查找
+                    if row > 1 && self.get(PiecePosition::new(row - 1, col)) == piece.reverse() {
                         for n in (0..(row - 1)).rev() {
-                            if self.get(&(n, col)) == OthelloPiece::Empty {
+                            if self.get(PiecePosition::new(n, col)) == Piece::Empty {
                                 break;
                             }
-                            if self.get(&(n, col)) == piece {
+                            if self.get(PiecePosition::new(n, col)) == piece {
                                 return true;
                             }
                         }
                     }
-                    if row < 6 && self.get(&(row + 1, col)) == piece.reverse() {
+                    // 向下查找
+                    if row < 6 && self.get(PiecePosition::new(row + 1, col)) == piece.reverse() {
                         for n in (row + 1)..8 {
-                            if self.get(&(n, col)) == OthelloPiece::Empty {
+                            if self.get(PiecePosition::new(n, col)) == Piece::Empty {
                                 break;
                             }
-                            if self.get(&(n, col)) == piece {
+                            if self.get(PiecePosition::new(n, col)) == piece {
                                 return true;
                             }
                         }
                     }
-                    if col > 1 && self.get(&(row, col - 1)) == piece.reverse() {
+                    // 向左查找
+                    if col > 1 && self.get(PiecePosition::new(row, col - 1)) == piece.reverse() {
                         for n in (0..(col - 1)).rev() {
-                            if self.get(&(row, n)) == OthelloPiece::Empty {
+                            if self.get(PiecePosition::new(row, n)) == Piece::Empty {
                                 break;
                             }
-                            if self.get(&(row, n)) == piece {
+                            if self.get(PiecePosition::new(row, n)) == piece {
                                 return true;
                             }
                         }
                     }
-                    if col < 6 && self.get(&(row, col + 1)) == piece.reverse() {
+                    // 向右查找
+                    if col < 6 && self.get(PiecePosition::new(row, col + 1)) == piece.reverse() {
                         for n in (col + 1)..8 {
-                            if self.get(&(row, n)) == OthelloPiece::Empty {
+                            if self.get(PiecePosition::new(row, n)) == Piece::Empty {
                                 break;
                             }
-                            if self.get(&(row, n)) == piece {
+                            if self.get(PiecePosition::new(row, n)) == piece {
                                 return true;
                             }
                         }
                     }
-                    if row > 1 && col > 1 && self.get(&(row - 1, col - 1)) == piece.reverse() {
-                        for n in 0..(min(row, col) - 1) {
-                            if self.get(&(row - n - 2, col - n - 2)) == OthelloPiece::Empty {
+                    // 向左上查找
+                    if row > 1
+                        && col > 1
+                        && self.get(PiecePosition::new(row - 1, col - 1)) == piece.reverse()
+                    {
+                        for n in 0..(cmp::min(row, col) - 1) {
+                            if self.get(PiecePosition::new(row - n - 2, col - n - 2))
+                                == Piece::Empty
+                            {
                                 break;
                             }
-                            if self.get(&(row - n - 2, col - n - 2)) == piece {
+                            if self.get(PiecePosition::new(row - n - 2, col - n - 2)) == piece {
                                 return true;
                             }
                         }
                     }
-                    if row > 1 && col < 6 && self.get(&(row - 1, col + 1)) == piece.reverse() {
-                        for n in 0..(min(row, 7 - col) - 1) {
-                            if self.get(&(row - n - 2, col + n + 2)) == OthelloPiece::Empty {
+                    // 向左下查找
+                    if row > 1
+                        && col < 6
+                        && self.get(PiecePosition::new(row - 1, col + 1)) == piece.reverse()
+                    {
+                        for n in 0..(cmp::min(row, 7 - col) - 1) {
+                            if self.get(PiecePosition::new(row - n - 2, col + n + 2))
+                                == Piece::Empty
+                            {
                                 break;
                             }
-                            if self.get(&(row - n - 2, col + n + 2)) == piece {
+                            if self.get(PiecePosition::new(row - n - 2, col + n + 2)) == piece {
                                 return true;
                             }
                         }
                     }
-                    if row < 6 && col > 1 && self.get(&(row + 1, col - 1)) == piece.reverse() {
-                        for n in 0..(min(7 - row, col) - 1) {
-                            if self.get(&(row + n + 2, col - n - 2)) == OthelloPiece::Empty {
+                    // 向右上查找
+                    if row < 6
+                        && col > 1
+                        && self.get(PiecePosition::new(row + 1, col - 1)) == piece.reverse()
+                    {
+                        for n in 0..(cmp::min(7 - row, col) - 1) {
+                            if self.get(PiecePosition::new(row + n + 2, col - n - 2))
+                                == Piece::Empty
+                            {
                                 break;
                             }
-                            if self.get(&(row + n + 2, col - n - 2)) == piece {
+                            if self.get(PiecePosition::new(row + n + 2, col - n - 2)) == piece {
                                 return true;
                             }
                         }
                     }
-                    if row < 6 && col < 6 && self.get(&(row + 1, col + 1)) == piece.reverse() {
-                        for n in 0..(6 - max(row, col)) {
-                            if self.get(&(row + n + 2, col + n + 2)) == OthelloPiece::Empty {
+                    // 向右下查找
+                    if row < 6
+                        && col < 6
+                        && self.get(PiecePosition::new(row + 1, col + 1)) == piece.reverse()
+                    {
+                        for n in 0..(6 - cmp::max(row, col)) {
+                            if self.get(PiecePosition::new(row + n + 2, col + n + 2))
+                                == Piece::Empty
+                            {
                                 break;
                             }
-                            if self.get(&(row + n + 2, col + n + 2)) == piece {
+                            if self.get(PiecePosition::new(row + n + 2, col + n + 2)) == piece {
                                 return true;
                             }
                         }
@@ -341,27 +445,94 @@ impl Othello {
         false
     }
 
+    // 检查棋局是否结束
     fn is_ended(&self) -> bool {
-        if self.can_put(self.next) {
+        if self.is_able_to_put(self.turn) {
             return false;
         } else {
-            if self.can_put(self.next.reverse()) {
+            if self.is_able_to_put(self.turn.reverse()) {
                 return false;
             }
         }
         true
     }
 
+    // 尝试落子，成功时返回 Ok(棋局是否结束)，失败时返回 Err(ActionError)
+    fn try_put(&mut self, pos: PiecePosition, player: User) -> Result<bool, ActionError> {
+        // 轮到 Black 落子
+        if let Piece::Black = self.turn {
+            // 有玩家作为 Black
+            if let Some(player_black) = &self.player_black {
+                // 验证落子发起者
+                if &player == player_black {
+                    match self.set(pos, Piece::Black) {
+                        Ok(_) => {
+                            // 检查 White 是否可以落子
+                            if self.is_able_to_put(Piece::White) {
+                                self.next_turn()
+                            }
+                        }
+                        Err(err) => return Err(err),
+                    }
+                } else {
+                    return Err(ActionError::NotYourTurn);
+                }
+            // 没有玩家作为 Black
+            } else {
+                match self.set(pos, Piece::Black) {
+                    Ok(_) => {
+                        self.player_black = Some(player);
+                        self.next_turn();
+                    }
+                    Err(err) => return Err(err),
+                }
+            }
+        // 轮到 White 落子
+        } else {
+            if let Some(player_white) = &self.player_white {
+                if &player == player_white {
+                    match self.set(pos, Piece::White) {
+                        Ok(_) => {
+                            if self.is_able_to_put(Piece::Black) {
+                                self.next_turn()
+                            }
+                        }
+                        Err(err) => return Err(err),
+                    }
+                } else {
+                    return Err(ActionError::NotYourTurn);
+                }
+            } else {
+                match self.set(pos, Piece::White) {
+                    Ok(_) => {
+                        self.player_white = Some(player);
+                        self.next_turn();
+                    }
+                    Err(err) => return Err(err),
+                }
+            }
+        }
+        // 返回棋局状态
+        Ok(self.is_ended())
+    }
+
+    // 设定下一位轮到的玩家
+    fn next_turn(&mut self) {
+        self.turn = match self.turn {
+            Piece::Black => Piece::White,
+            _ => Piece::Black,
+        };
+    }
+
+    // 获取按钮列表
     fn get_inline_keyboard(&self) -> InlineKeyboardMarkup {
         let mut keyboad: Vec<Vec<InlineKeyboardButton>> = Vec::new();
         for col in 0..8 {
             let mut keyboad_col: Vec<InlineKeyboardButton> = Vec::new();
             for row in 0..8 {
                 keyboad_col.push(InlineKeyboardButton::new(
-                    self.get(&(row, col)).as_str(),
-                    InlineKeyboardButtonKind::CallbackData(
-                        String::from("othello_") + &row.to_string() + "_" + &col.to_string(),
-                    ),
+                    self.get(PiecePosition::new(row, col)).to_string(),
+                    InlineKeyboardButtonKind::CallbackData(format!("othello_{}_{}", row, col)),
                 ));
             }
             keyboad.push(keyboad_col);
@@ -369,87 +540,105 @@ impl Othello {
         InlineKeyboardMarkup::from(keyboad)
     }
 
-    fn print_players(&self) -> String {
+    // 获取双方玩家
+    fn get_players(&self) -> String {
         let mut players = String::new();
         if let Some(player_black) = &self.player_black {
             players.push_str("⚫：");
-            if let Some(username) = &player_black.username {
-                players += &username;
-            }
+            players += &player_black.first_name;
             if let Some(player_white) = &self.player_white {
                 players.push_str("\n⚪：");
-                if let Some(username) = &player_white.username {
-                    players += &username;
-                }
+                players += &player_white.first_name;
             }
         }
         players
     }
 
-    fn print(&self) -> String {
-        let mut board = String::from("\n");
+    // 获取下一位轮到的玩家
+    fn get_next_player(&self) -> String {
+        self.turn.to_string()
+    }
+
+    // 获取棋局结果
+    fn get_game_result(&self) -> String {
+        let mut board = String::new();
+        let mut black_count: u8 = 0;
+        let mut white_count: u8 = 0;
         for col in 0..8 {
             for row in 0..8 {
-                board.push_str(self.data[row][col].as_str());
+                match self.get(PiecePosition::new(row, col)) {
+                    Piece::Black => black_count += 1,
+                    Piece::White => white_count += 1,
+                    _ => (),
+                }
+                board.push_str(&self.data[row][col].to_string());
             }
             board.push_str("\n");
         }
-        board.push_str("\n");
-        board
+        match black_count.cmp(&white_count) {
+            cmp::Ordering::Less => format!(
+                "{}\n\n⚫：{} ⚪：{}\n\n⚪ 赢了",
+                board, black_count, white_count
+            ),
+            cmp::Ordering::Greater => format!(
+                "{}\n\n⚫：{} ⚪：{}\n\n⚫ 赢了",
+                board, black_count, white_count
+            ),
+            cmp::Ordering::Equal => format!(
+                "{}\n\n⚫：{} ⚪：{}\n\n平局",
+                board, black_count, white_count
+            ),
+        }
+    }
+}
+
+// 正在进行的棋局列表
+#[derive(Serialize, Deserialize)]
+struct GameList {
+    list: HashMap<i64, Game>,
+}
+
+impl GameList {
+    fn new() -> Self {
+        Self {
+            list: HashMap::new(),
+        }
     }
 
-    fn print_result(&self) -> String {
-        let mut black: u8 = 0;
-        let mut white: u8 = 0;
-        for row in 0..8 {
-            for col in 0..8 {
-                match self.get(&(row, col)) {
-                    OthelloPiece::Black => black += 1,
-                    OthelloPiece::White => white += 1,
-                    _ => (),
+    fn get(&mut self, id: i64) -> Game {
+        self.list.entry(id).or_insert(Game::new()).clone()
+    }
+
+    fn update_and_check_empty(&mut self, id: i64, game: Option<Game>) -> bool {
+        if let Some(game) = game {
+            self.list.insert(id, game);
+            false
+        } else {
+            self.list.remove(&id);
+            self.list.is_empty()
+        }
+    }
+}
+
+// 尝试解析 callback data，返回目标落子位置
+fn try_parse_callback(data: String) -> Option<PiecePosition> {
+    if data.starts_with("othello_") {
+        let mut data = data[8..].split('_');
+        if let Some(row) = data.next() {
+            if let Ok(row) = row.parse::<usize>() {
+                if let Some(col) = data.next() {
+                    if let Ok(col) = col.parse::<usize>() {
+                        if row < 8 && col < 8 {
+                            if let None = data.next() {
+                                return Some(PiecePosition::new(row, col));
+                            }
+                        }
+                    }
                 }
             }
         }
-        match black.cmp(&white) {
-            Ordering::Less => {
-                String::from("⚫：")
-                    + &black.to_string()
-                    + " ⚪："
-                    + &white.to_string()
-                    + "\n\n⚪ 赢了"
-            }
-            Ordering::Greater => {
-                String::from("⚫：")
-                    + &black.to_string()
-                    + " ⚪："
-                    + &white.to_string()
-                    + "\n\n⚫ 赢了"
-            }
-            Ordering::Equal => {
-                String::from("⚫：")
-                    + &black.to_string()
-                    + " ⚪："
-                    + &white.to_string()
-                    + "\n\n和棋"
-            }
-        }
     }
-}
-
-trait OthelloVec {
-    fn get_index(&mut self, id: i64) -> usize;
-}
-
-impl OthelloVec for Vec<Othello> {
-    fn get_index(&mut self, id: i64) -> usize {
-        match self.iter().position(|v| v.id == id) {
-            Some(index) => index,
-            None => {
-                self.push(Othello::new(id));
-                self.len() - 1
-            }
-        }
-    }
+    None
 }
 
 #[handler(command = "/othello")]
@@ -459,12 +648,10 @@ pub async fn othello_command_handler(
 ) -> Result<HandlerResult, ErrorHandler> {
     let message = command.get_message();
     let chat_id = message.get_chat_id();
-    if let Some(_) = message.get_user() {
-        let method = SendMessage::new(chat_id, "黑白棋").reply_markup(
-            ReplyMarkup::InlineKeyboardMarkup(Othello::new(0).get_inline_keyboard()),
-        );
-        context.api.execute(method).await?;
-    }
+    let method = SendMessage::new(chat_id, "黑白棋").reply_markup(
+        ReplyMarkup::InlineKeyboardMarkup(Game::new().get_inline_keyboard()),
+    );
+    context.api.execute(method).await?;
     Ok(HandlerResult::Stop)
 }
 
@@ -473,193 +660,69 @@ pub async fn othello_inlinekeyboard_handler(
     context: &Context,
     query: CallbackQuery,
 ) -> Result<HandlerResult, ErrorHandler> {
-    let data = query.data;
-    if let Some(data) = data {
-        let cell: Option<(usize, usize)> = match data.as_str() {
-            "othello_0_0" => Some((0, 0)),
-            "othello_0_1" => Some((0, 1)),
-            "othello_0_2" => Some((0, 2)),
-            "othello_0_3" => Some((0, 3)),
-            "othello_0_4" => Some((0, 4)),
-            "othello_0_5" => Some((0, 5)),
-            "othello_0_6" => Some((0, 6)),
-            "othello_0_7" => Some((0, 7)),
-            "othello_1_0" => Some((1, 0)),
-            "othello_1_1" => Some((1, 1)),
-            "othello_1_2" => Some((1, 2)),
-            "othello_1_3" => Some((1, 3)),
-            "othello_1_4" => Some((1, 4)),
-            "othello_1_5" => Some((1, 5)),
-            "othello_1_6" => Some((1, 6)),
-            "othello_1_7" => Some((1, 7)),
-            "othello_2_0" => Some((2, 0)),
-            "othello_2_1" => Some((2, 1)),
-            "othello_2_2" => Some((2, 2)),
-            "othello_2_3" => Some((2, 3)),
-            "othello_2_4" => Some((2, 4)),
-            "othello_2_5" => Some((2, 5)),
-            "othello_2_6" => Some((2, 6)),
-            "othello_2_7" => Some((2, 7)),
-            "othello_3_0" => Some((3, 0)),
-            "othello_3_1" => Some((3, 1)),
-            "othello_3_2" => Some((3, 2)),
-            "othello_3_3" => Some((3, 3)),
-            "othello_3_4" => Some((3, 4)),
-            "othello_3_5" => Some((3, 5)),
-            "othello_3_6" => Some((3, 6)),
-            "othello_3_7" => Some((3, 7)),
-            "othello_4_0" => Some((4, 0)),
-            "othello_4_1" => Some((4, 1)),
-            "othello_4_2" => Some((4, 2)),
-            "othello_4_3" => Some((4, 3)),
-            "othello_4_4" => Some((4, 4)),
-            "othello_4_5" => Some((4, 5)),
-            "othello_4_6" => Some((4, 6)),
-            "othello_4_7" => Some((4, 7)),
-            "othello_5_0" => Some((5, 0)),
-            "othello_5_1" => Some((5, 1)),
-            "othello_5_2" => Some((5, 2)),
-            "othello_5_3" => Some((5, 3)),
-            "othello_5_4" => Some((5, 4)),
-            "othello_5_5" => Some((5, 5)),
-            "othello_5_6" => Some((5, 6)),
-            "othello_5_7" => Some((5, 7)),
-            "othello_6_0" => Some((6, 0)),
-            "othello_6_1" => Some((6, 1)),
-            "othello_6_2" => Some((6, 2)),
-            "othello_6_3" => Some((6, 3)),
-            "othello_6_4" => Some((6, 4)),
-            "othello_6_5" => Some((6, 5)),
-            "othello_6_6" => Some((6, 6)),
-            "othello_6_7" => Some((6, 7)),
-            "othello_7_0" => Some((7, 0)),
-            "othello_7_1" => Some((7, 1)),
-            "othello_7_2" => Some((7, 2)),
-            "othello_7_3" => Some((7, 3)),
-            "othello_7_4" => Some((7, 4)),
-            "othello_7_5" => Some((7, 5)),
-            "othello_7_6" => Some((7, 6)),
-            "othello_7_7" => Some((7, 7)),
-            _ => None,
-        };
-        if let Some(cell) = cell {
+    // 检查非空 query
+    if let Some(data) = query.data {
+        // 尝试 parse callback data
+        if let Some(pos) = try_parse_callback(data) {
             let message = query.message.unwrap();
             let chat_id = message.get_chat_id();
             let message_id = message.id;
-            if let Some(message_author) = message.get_user() {
-                let user = query.from;
-                let mut session = context
-                    .session_manager
-                    .get_session(SessionId::new(chat_id, message_author.id))?;
-                let mut othello = session.get("othello").await?.unwrap_or(Vec::new());
-                let index = othello.get_index(message_id);
-                let mut edit_message: Option<EditMessageText> = None;
-                let mut answer_callback_query: Option<&str> = None;
-                match othello[index].next {
-                    OthelloPiece::Black => match &othello[index].player_black {
-                        Some(player_black) => {
-                            if &user == player_black {
-                                if othello[index].set(&cell, OthelloPiece::Black) {
-                                    if othello[index].can_put(OthelloPiece::White) {
-                                        othello[index].next();
-                                    }
-                                } else {
-                                    answer_callback_query = Some("无法在此落子");
-                                }
-                            } else {
-                                answer_callback_query = Some("不是您的回合");
-                            }
+            let user = query.from;
+            // 从 session 获取棋局
+            let mut session = context
+                .session_manager
+                .get_session(SessionId::new(chat_id, 0))?;
+            let mut game_list = session.get("othello").await?.unwrap_or(GameList::new());
+            let mut game = game_list.get(message_id);
+            // 尝试落子
+            match game.try_put(pos, user.clone()) {
+                // 落子成功
+                Ok(is_ended) => {
+                    let method: EditMessageText;
+                    // 棋局是否结束
+                    if is_ended {
+                        method = EditMessageText::new(
+                            chat_id,
+                            message_id,
+                            format!(
+                                "黑白棋\n\n{}\n\n{}",
+                                game.get_players(),
+                                game.get_game_result()
+                            ),
+                        );
+                        if game_list.update_and_check_empty(message_id, None) {
+                            session.remove("othello").await?;
+                        } else {
+                            session.set("othello", &game_list).await?;
                         }
-                        None => {
-                            if othello[index].set(&cell, OthelloPiece::Black) {
-                                othello[index].player_black = Some(user.clone());
-                                othello[index].next();
-                                edit_message = Some(EditMessageText::new(
-                                    chat_id,
-                                    message_id,
-                                    String::from("黑白棋\n") + &othello[index].print_players(),
-                                ));
-                            } else {
-                                answer_callback_query = Some("无法在此落子");
-                            }
-                        }
-                    },
-                    OthelloPiece::White => match &othello[index].player_white {
-                        Some(player_white) => {
-                            if &user == player_white {
-                                if othello[index].set(&cell, OthelloPiece::White) {
-                                    if othello[index].can_put(OthelloPiece::Black) {
-                                        othello[index].next();
-                                    }
-                                } else {
-                                    answer_callback_query = Some("无法在此落子");
-                                }
-                            } else {
-                                answer_callback_query = Some("不是您的回合");
-                            }
-                        }
-                        None => {
-                            if othello[index].set(&cell, OthelloPiece::White) {
-                                othello[index].player_white = Some(user.clone());
-                                othello[index].next();
-                                edit_message = Some(EditMessageText::new(
-                                    chat_id,
-                                    message_id,
-                                    String::from("黑白棋\n") + &othello[index].print_players(),
-                                ));
-                            } else {
-                                answer_callback_query = Some("无法在此落子");
-                            }
-                        }
-                    },
-                    _ => (),
-                }
-                match answer_callback_query {
-                    Some(message) => {
-                        let method = AnswerCallbackQuery::new(query.id)
-                            .text(message)
-                            .show_alert(true);
-                        context.api.execute(method).await?;
-                    }
-                    None => {
-                        let method = AnswerCallbackQuery::new(query.id);
-                        context.api.execute(method).await?;
-                    }
-                }
-                if othello[index].is_ended() {
-                    let method = EditMessageText::new(
-                        chat_id,
-                        message_id,
-                        String::from("黑白棋\n")
-                            + &othello[index].print_players()
-                            + &String::from("\n")
-                            + &othello[index].print()
-                            + &othello[index].print_result(),
-                    );
-                    context.api.execute(method).await?;
-                    othello.remove(index);
-                    if othello.is_empty() {
-                        session.remove("othello").await?;
                     } else {
-                        session.set("othello", &othello).await?;
+                        method = EditMessageText::new(
+                            chat_id,
+                            message_id,
+                            format!(
+                                "黑白棋\n\n{}\n\n轮到：{}",
+                                game.get_players(),
+                                game.get_next_player()
+                            ),
+                        )
+                        .reply_markup(game.get_inline_keyboard());
+                        game_list.update_and_check_empty(message_id, Some(game.clone()));
+                        session.set("othello", &game_list).await?;
                     }
-                } else {
-                    session.set("othello", &othello).await?;
-                    let edit_reply_markup = EditMessageReplyMarkup::new(chat_id, message_id)
-                        .reply_markup(othello[index].get_inline_keyboard());
-                    match edit_message {
-                        Some(edit_message) => {
-                            try_join!(
-                                context.api.execute(edit_message),
-                                context.api.execute(edit_reply_markup)
-                            )?;
-                        }
-                        None => {
-                            context.api.execute(edit_reply_markup).await?;
-                        }
-                    }
+                    context.api.execute(method).await?;
+                    // 回应 callback
+                    let method = AnswerCallbackQuery::new(query.id);
+                    context.api.execute(method).await?;
+                }
+                // 操作失败
+                Err(err) => {
+                    let method = AnswerCallbackQuery::new(query.id)
+                        .text(err.to_string())
+                        .show_alert(true);
+                    context.api.execute(method).await.unwrap();
                 }
             }
+            return Ok(HandlerResult::Stop);
         }
     }
     Ok(HandlerResult::Continue)
