@@ -48,7 +48,7 @@ struct PiecePosition {
 }
 
 impl PiecePosition {
-    fn new(row: usize, col: usize) -> Self {
+    fn from(row: usize, col: usize) -> Self {
         Self { row, col }
     }
 }
@@ -111,17 +111,17 @@ impl Game {
         let mut is_changed = false;
         if self.data[pos.row][pos.col] == Piece::Empty {
             // 向上查找
-            if pos.row > 1 && self.get(PiecePosition::new(pos.row - 1, pos.col)) == piece.reverse()
+            if pos.row > 1 && self.get(PiecePosition::from(pos.row - 1, pos.col)) == piece.reverse()
             {
                 for n in (0..(pos.row - 1)).rev() {
-                    if self.get(PiecePosition::new(n, pos.col)) == Piece::Empty {
+                    if self.get(PiecePosition::from(n, pos.col)) == Piece::Empty {
                         break;
                     }
-                    if self.get(PiecePosition::new(n, pos.col)) == piece {
+                    if self.get(PiecePosition::from(n, pos.col)) == piece {
                         self.data[pos.row][pos.col] = piece;
                         let mut n_rev = n + 1;
                         loop {
-                            if self.get(PiecePosition::new(n_rev, pos.col)) == piece.reverse() {
+                            if self.get(PiecePosition::from(n_rev, pos.col)) == piece.reverse() {
                                 self.data[n_rev][pos.col] = piece;
                                 n_rev += 1;
                             } else {
@@ -134,17 +134,17 @@ impl Game {
                 }
             }
             // 向下查找
-            if pos.row < 6 && self.get(PiecePosition::new(pos.row + 1, pos.col)) == piece.reverse()
+            if pos.row < 6 && self.get(PiecePosition::from(pos.row + 1, pos.col)) == piece.reverse()
             {
                 for n in (pos.row + 1)..8 {
-                    if self.get(PiecePosition::new(n, pos.col)) == Piece::Empty {
+                    if self.get(PiecePosition::from(n, pos.col)) == Piece::Empty {
                         break;
                     }
-                    if self.get(PiecePosition::new(n, pos.col)) == piece {
+                    if self.get(PiecePosition::from(n, pos.col)) == piece {
                         self.data[pos.row][pos.col] = piece;
                         let mut n_rev = n - 1;
                         loop {
-                            if self.get(PiecePosition::new(n_rev, pos.col)) == piece.reverse() {
+                            if self.get(PiecePosition::from(n_rev, pos.col)) == piece.reverse() {
                                 self.data[n_rev][pos.col] = piece;
                                 n_rev -= 1;
                             } else {
@@ -157,17 +157,17 @@ impl Game {
                 }
             }
             // 向左查找
-            if pos.col > 1 && self.get(PiecePosition::new(pos.row, pos.col - 1)) == piece.reverse()
+            if pos.col > 1 && self.get(PiecePosition::from(pos.row, pos.col - 1)) == piece.reverse()
             {
                 for n in (0..(pos.col - 1)).rev() {
-                    if self.get(PiecePosition::new(pos.row, n)) == Piece::Empty {
+                    if self.get(PiecePosition::from(pos.row, n)) == Piece::Empty {
                         break;
                     }
-                    if self.get(PiecePosition::new(pos.row, n)) == piece {
+                    if self.get(PiecePosition::from(pos.row, n)) == piece {
                         self.data[pos.row][pos.col] = piece;
                         let mut n_rev = n + 1;
                         loop {
-                            if self.get(PiecePosition::new(pos.row, n_rev)) == piece.reverse() {
+                            if self.get(PiecePosition::from(pos.row, n_rev)) == piece.reverse() {
                                 self.data[pos.row][n_rev] = piece;
                                 n_rev += 1;
                             } else {
@@ -180,17 +180,17 @@ impl Game {
                 }
             }
             // 向右查找
-            if pos.col < 6 && self.get(PiecePosition::new(pos.row, pos.col + 1)) == piece.reverse()
+            if pos.col < 6 && self.get(PiecePosition::from(pos.row, pos.col + 1)) == piece.reverse()
             {
                 for n in (pos.col + 1)..8 {
-                    if self.get(PiecePosition::new(pos.row, n)) == Piece::Empty {
+                    if self.get(PiecePosition::from(pos.row, n)) == Piece::Empty {
                         break;
                     }
-                    if self.get(PiecePosition::new(pos.row, n)) == piece {
+                    if self.get(PiecePosition::from(pos.row, n)) == piece {
                         self.data[pos.row][pos.col] = piece;
                         let mut n_rev = n - 1;
                         loop {
-                            if self.get(PiecePosition::new(pos.row, n_rev)) == piece.reverse() {
+                            if self.get(PiecePosition::from(pos.row, n_rev)) == piece.reverse() {
                                 self.data[pos.row][n_rev] = piece;
                                 n_rev -= 1;
                             } else {
@@ -205,19 +205,19 @@ impl Game {
             // 向左上查找
             if pos.row > 1
                 && pos.col > 1
-                && self.get(PiecePosition::new(pos.row - 1, pos.col - 1)) == piece.reverse()
+                && self.get(PiecePosition::from(pos.row - 1, pos.col - 1)) == piece.reverse()
             {
                 for n in 0..(cmp::min(pos.row, pos.col) - 1) {
-                    if self.get(PiecePosition::new(pos.row - n - 2, pos.col - n - 2))
+                    if self.get(PiecePosition::from(pos.row - n - 2, pos.col - n - 2))
                         == Piece::Empty
                     {
                         break;
                     }
-                    if self.get(PiecePosition::new(pos.row - n - 2, pos.col - n - 2)) == piece {
+                    if self.get(PiecePosition::from(pos.row - n - 2, pos.col - n - 2)) == piece {
                         self.data[pos.row][pos.col] = piece;
                         let mut n_rev = n + 1;
                         loop {
-                            if self.get(PiecePosition::new(pos.row - n_rev, pos.col - n_rev))
+                            if self.get(PiecePosition::from(pos.row - n_rev, pos.col - n_rev))
                                 == piece.reverse()
                             {
                                 self.data[pos.row - n_rev][pos.col - n_rev] = piece;
@@ -234,19 +234,19 @@ impl Game {
             // 向左下查找
             if pos.row > 1
                 && pos.col < 6
-                && self.get(PiecePosition::new(pos.row - 1, pos.col + 1)) == piece.reverse()
+                && self.get(PiecePosition::from(pos.row - 1, pos.col + 1)) == piece.reverse()
             {
                 for n in 0..(cmp::min(pos.row, 7 - pos.col) - 1) {
-                    if self.get(PiecePosition::new(pos.row - n - 2, pos.col + n + 2))
+                    if self.get(PiecePosition::from(pos.row - n - 2, pos.col + n + 2))
                         == Piece::Empty
                     {
                         break;
                     }
-                    if self.get(PiecePosition::new(pos.row - n - 2, pos.col + n + 2)) == piece {
+                    if self.get(PiecePosition::from(pos.row - n - 2, pos.col + n + 2)) == piece {
                         self.data[pos.row][pos.col] = piece;
                         let mut n_rev = n + 1;
                         loop {
-                            if self.get(PiecePosition::new(pos.row - n_rev, pos.col + n_rev))
+                            if self.get(PiecePosition::from(pos.row - n_rev, pos.col + n_rev))
                                 == piece.reverse()
                             {
                                 self.data[pos.row - n_rev][pos.col + n_rev] = piece;
@@ -263,19 +263,19 @@ impl Game {
             // 向右上查找
             if pos.row < 6
                 && pos.col > 1
-                && self.get(PiecePosition::new(pos.row + 1, pos.col - 1)) == piece.reverse()
+                && self.get(PiecePosition::from(pos.row + 1, pos.col - 1)) == piece.reverse()
             {
                 for n in 0..(cmp::min(7 - pos.row, pos.col) - 1) {
-                    if self.get(PiecePosition::new(pos.row + n + 2, pos.col - n - 2))
+                    if self.get(PiecePosition::from(pos.row + n + 2, pos.col - n - 2))
                         == Piece::Empty
                     {
                         break;
                     }
-                    if self.get(PiecePosition::new(pos.row + n + 2, pos.col - n - 2)) == piece {
+                    if self.get(PiecePosition::from(pos.row + n + 2, pos.col - n - 2)) == piece {
                         self.data[pos.row][pos.col] = piece;
                         let mut n_rev = n + 1;
                         loop {
-                            if self.get(PiecePosition::new(pos.row + n_rev, pos.col - n_rev))
+                            if self.get(PiecePosition::from(pos.row + n_rev, pos.col - n_rev))
                                 == piece.reverse()
                             {
                                 self.data[pos.row + n_rev][pos.col - n_rev] = piece;
@@ -292,19 +292,19 @@ impl Game {
             // 向右下查找
             if pos.row < 6
                 && pos.col < 6
-                && self.get(PiecePosition::new(pos.row + 1, pos.col + 1)) == piece.reverse()
+                && self.get(PiecePosition::from(pos.row + 1, pos.col + 1)) == piece.reverse()
             {
                 for n in 0..(6 - cmp::max(pos.row, pos.col)) {
-                    if self.get(PiecePosition::new(pos.row + n + 2, pos.col + n + 2))
+                    if self.get(PiecePosition::from(pos.row + n + 2, pos.col + n + 2))
                         == Piece::Empty
                     {
                         break;
                     }
-                    if self.get(PiecePosition::new(pos.row + n + 2, pos.col + n + 2)) == piece {
+                    if self.get(PiecePosition::from(pos.row + n + 2, pos.col + n + 2)) == piece {
                         self.data[pos.row][pos.col] = piece;
                         let mut n_rev = n + 1;
                         loop {
-                            if self.get(PiecePosition::new(pos.row + n_rev, pos.col + n_rev))
+                            if self.get(PiecePosition::from(pos.row + n_rev, pos.col + n_rev))
                                 == piece.reverse()
                             {
                                 self.data[pos.row + n_rev][pos.col + n_rev] = piece;
@@ -330,47 +330,47 @@ impl Game {
     fn is_able_to_put(&self, piece: Piece) -> bool {
         for row in 0..8 {
             for col in 0..8 {
-                if self.get(PiecePosition::new(row, col)) == Piece::Empty {
+                if self.get(PiecePosition::from(row, col)) == Piece::Empty {
                     // 向上查找
-                    if row > 1 && self.get(PiecePosition::new(row - 1, col)) == piece.reverse() {
+                    if row > 1 && self.get(PiecePosition::from(row - 1, col)) == piece.reverse() {
                         for n in (0..(row - 1)).rev() {
-                            if self.get(PiecePosition::new(n, col)) == Piece::Empty {
+                            if self.get(PiecePosition::from(n, col)) == Piece::Empty {
                                 break;
                             }
-                            if self.get(PiecePosition::new(n, col)) == piece {
+                            if self.get(PiecePosition::from(n, col)) == piece {
                                 return true;
                             }
                         }
                     }
                     // 向下查找
-                    if row < 6 && self.get(PiecePosition::new(row + 1, col)) == piece.reverse() {
+                    if row < 6 && self.get(PiecePosition::from(row + 1, col)) == piece.reverse() {
                         for n in (row + 1)..8 {
-                            if self.get(PiecePosition::new(n, col)) == Piece::Empty {
+                            if self.get(PiecePosition::from(n, col)) == Piece::Empty {
                                 break;
                             }
-                            if self.get(PiecePosition::new(n, col)) == piece {
+                            if self.get(PiecePosition::from(n, col)) == piece {
                                 return true;
                             }
                         }
                     }
                     // 向左查找
-                    if col > 1 && self.get(PiecePosition::new(row, col - 1)) == piece.reverse() {
+                    if col > 1 && self.get(PiecePosition::from(row, col - 1)) == piece.reverse() {
                         for n in (0..(col - 1)).rev() {
-                            if self.get(PiecePosition::new(row, n)) == Piece::Empty {
+                            if self.get(PiecePosition::from(row, n)) == Piece::Empty {
                                 break;
                             }
-                            if self.get(PiecePosition::new(row, n)) == piece {
+                            if self.get(PiecePosition::from(row, n)) == piece {
                                 return true;
                             }
                         }
                     }
                     // 向右查找
-                    if col < 6 && self.get(PiecePosition::new(row, col + 1)) == piece.reverse() {
+                    if col < 6 && self.get(PiecePosition::from(row, col + 1)) == piece.reverse() {
                         for n in (col + 1)..8 {
-                            if self.get(PiecePosition::new(row, n)) == Piece::Empty {
+                            if self.get(PiecePosition::from(row, n)) == Piece::Empty {
                                 break;
                             }
-                            if self.get(PiecePosition::new(row, n)) == piece {
+                            if self.get(PiecePosition::from(row, n)) == piece {
                                 return true;
                             }
                         }
@@ -378,15 +378,15 @@ impl Game {
                     // 向左上查找
                     if row > 1
                         && col > 1
-                        && self.get(PiecePosition::new(row - 1, col - 1)) == piece.reverse()
+                        && self.get(PiecePosition::from(row - 1, col - 1)) == piece.reverse()
                     {
                         for n in 0..(cmp::min(row, col) - 1) {
-                            if self.get(PiecePosition::new(row - n - 2, col - n - 2))
+                            if self.get(PiecePosition::from(row - n - 2, col - n - 2))
                                 == Piece::Empty
                             {
                                 break;
                             }
-                            if self.get(PiecePosition::new(row - n - 2, col - n - 2)) == piece {
+                            if self.get(PiecePosition::from(row - n - 2, col - n - 2)) == piece {
                                 return true;
                             }
                         }
@@ -394,15 +394,15 @@ impl Game {
                     // 向左下查找
                     if row > 1
                         && col < 6
-                        && self.get(PiecePosition::new(row - 1, col + 1)) == piece.reverse()
+                        && self.get(PiecePosition::from(row - 1, col + 1)) == piece.reverse()
                     {
                         for n in 0..(cmp::min(row, 7 - col) - 1) {
-                            if self.get(PiecePosition::new(row - n - 2, col + n + 2))
+                            if self.get(PiecePosition::from(row - n - 2, col + n + 2))
                                 == Piece::Empty
                             {
                                 break;
                             }
-                            if self.get(PiecePosition::new(row - n - 2, col + n + 2)) == piece {
+                            if self.get(PiecePosition::from(row - n - 2, col + n + 2)) == piece {
                                 return true;
                             }
                         }
@@ -410,15 +410,15 @@ impl Game {
                     // 向右上查找
                     if row < 6
                         && col > 1
-                        && self.get(PiecePosition::new(row + 1, col - 1)) == piece.reverse()
+                        && self.get(PiecePosition::from(row + 1, col - 1)) == piece.reverse()
                     {
                         for n in 0..(cmp::min(7 - row, col) - 1) {
-                            if self.get(PiecePosition::new(row + n + 2, col - n - 2))
+                            if self.get(PiecePosition::from(row + n + 2, col - n - 2))
                                 == Piece::Empty
                             {
                                 break;
                             }
-                            if self.get(PiecePosition::new(row + n + 2, col - n - 2)) == piece {
+                            if self.get(PiecePosition::from(row + n + 2, col - n - 2)) == piece {
                                 return true;
                             }
                         }
@@ -426,15 +426,15 @@ impl Game {
                     // 向右下查找
                     if row < 6
                         && col < 6
-                        && self.get(PiecePosition::new(row + 1, col + 1)) == piece.reverse()
+                        && self.get(PiecePosition::from(row + 1, col + 1)) == piece.reverse()
                     {
                         for n in 0..(6 - cmp::max(row, col)) {
-                            if self.get(PiecePosition::new(row + n + 2, col + n + 2))
+                            if self.get(PiecePosition::from(row + n + 2, col + n + 2))
                                 == Piece::Empty
                             {
                                 break;
                             }
-                            if self.get(PiecePosition::new(row + n + 2, col + n + 2)) == piece {
+                            if self.get(PiecePosition::from(row + n + 2, col + n + 2)) == piece {
                                 return true;
                             }
                         }
@@ -531,7 +531,7 @@ impl Game {
             let mut keyboad_col: Vec<InlineKeyboardButton> = Vec::new();
             for row in 0..8 {
                 keyboad_col.push(InlineKeyboardButton::new(
-                    self.get(PiecePosition::new(row, col)).to_string(),
+                    self.get(PiecePosition::from(row, col)).to_string(),
                     InlineKeyboardButtonKind::CallbackData(format!("othello_{}_{}", row, col)),
                 ));
             }
@@ -566,7 +566,7 @@ impl Game {
         let mut white_count: u8 = 0;
         for col in 0..8 {
             for row in 0..8 {
-                match self.get(PiecePosition::new(row, col)) {
+                match self.get(PiecePosition::from(row, col)) {
                     Piece::Black => black_count += 1,
                     Piece::White => white_count += 1,
                     _ => (),
@@ -630,7 +630,7 @@ fn try_parse_callback(data: String) -> Option<PiecePosition> {
                     if let Ok(col) = col.parse::<usize>() {
                         if row < 8 && col < 8 {
                             if let None = data.next() {
-                                return Some(PiecePosition::new(row, col));
+                                return Some(PiecePosition::from(row, col));
                             }
                         }
                     }

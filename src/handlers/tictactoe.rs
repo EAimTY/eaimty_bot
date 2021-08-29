@@ -38,7 +38,7 @@ struct PiecePosition {
 }
 
 impl PiecePosition {
-    fn new(row: usize, col: usize) -> Self {
+    fn from(row: usize, col: usize) -> Self {
         Self { row, col }
     }
 }
@@ -167,29 +167,29 @@ impl Game {
     fn get_game_state(&self) -> GameState {
         // 纵向检查
         for row in 0..3 {
-            if self.get(PiecePosition::new(row, 0)) != Piece::Empty
-                && self.get(PiecePosition::new(row, 0)) == self.get(PiecePosition::new(row, 1))
-                && self.get(PiecePosition::new(row, 0)) == self.get(PiecePosition::new(row, 2))
+            if self.get(PiecePosition::from(row, 0)) != Piece::Empty
+                && self.get(PiecePosition::from(row, 0)) == self.get(PiecePosition::from(row, 1))
+                && self.get(PiecePosition::from(row, 0)) == self.get(PiecePosition::from(row, 2))
             {
                 return GameState::Win;
             }
         }
         // 横向检查
         for col in 0..3 {
-            if self.get(PiecePosition::new(0, col)) != Piece::Empty
-                && self.get(PiecePosition::new(0, col)) == self.get(PiecePosition::new(1, col))
-                && self.get(PiecePosition::new(0, col)) == self.get(PiecePosition::new(2, col))
+            if self.get(PiecePosition::from(0, col)) != Piece::Empty
+                && self.get(PiecePosition::from(0, col)) == self.get(PiecePosition::from(1, col))
+                && self.get(PiecePosition::from(0, col)) == self.get(PiecePosition::from(2, col))
             {
                 return GameState::Win;
             }
         }
         // 对角线检查
-        if (self.get(PiecePosition::new(0, 0)) != Piece::Empty
-            && self.get(PiecePosition::new(0, 0)) == self.get(PiecePosition::new(1, 1))
-            && self.get(PiecePosition::new(0, 0)) == self.get(PiecePosition::new(2, 2)))
-            || (self.get(PiecePosition::new(0, 2)) != Piece::Empty
-                && self.get(PiecePosition::new(0, 2)) == self.get(PiecePosition::new(1, 1))
-                && self.get(PiecePosition::new(0, 2)) == self.get(PiecePosition::new(2, 0)))
+        if (self.get(PiecePosition::from(0, 0)) != Piece::Empty
+            && self.get(PiecePosition::from(0, 0)) == self.get(PiecePosition::from(1, 1))
+            && self.get(PiecePosition::from(0, 0)) == self.get(PiecePosition::from(2, 2)))
+            || (self.get(PiecePosition::from(0, 2)) != Piece::Empty
+                && self.get(PiecePosition::from(0, 2)) == self.get(PiecePosition::from(1, 1))
+                && self.get(PiecePosition::from(0, 2)) == self.get(PiecePosition::from(2, 0)))
         {
             return GameState::Win;
         }
@@ -197,7 +197,7 @@ impl Game {
         let mut is_all_filled = true;
         for row in 0..3 {
             for col in 0..3 {
-                if self.get(PiecePosition::new(row, col)) == Piece::Empty {
+                if self.get(PiecePosition::from(row, col)) == Piece::Empty {
                     is_all_filled = false;
                 }
             }
@@ -215,7 +215,7 @@ impl Game {
             let mut keyboad_col: Vec<InlineKeyboardButton> = Vec::new();
             for row in 0..3 {
                 keyboad_col.push(InlineKeyboardButton::new(
-                    self.get(PiecePosition::new(row, col)).to_string(),
+                    self.get(PiecePosition::from(row, col)).to_string(),
                     InlineKeyboardButtonKind::CallbackData(format!("tictactoe_{}_{}", row, col)),
                 ));
             }
@@ -294,7 +294,7 @@ fn try_parse_callback(data: String) -> Option<PiecePosition> {
                     if let Ok(col) = col.parse::<usize>() {
                         if row < 3 && col < 3 {
                             if let None = data.next() {
-                                return Some(PiecePosition::new(row, col));
+                                return Some(PiecePosition::from(row, col));
                             }
                         }
                     }
