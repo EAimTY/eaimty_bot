@@ -96,7 +96,7 @@ impl Game {
         self.data[pos.row][pos.col]
     }
 
-    // 设定指定位子的棋子，失败时返回 Err(ActionError::CellNotEmpty)
+    // 设定指定位子的棋子，失败时返回 Err(ActionError)
     fn set(&mut self, pos: PiecePosition, piece: Piece) -> Result<(), ActionError> {
         if self.get(pos) == Piece::Empty {
             self.data[pos.row][pos.col] = piece;
@@ -155,6 +155,7 @@ impl Game {
         Ok(self.get_game_state())
     }
 
+    // 设定下一位轮到的玩家
     fn next_turn(&mut self) {
         self.turn = match self.turn {
             Piece::Cross => Piece::Nought,
@@ -223,7 +224,7 @@ impl Game {
         InlineKeyboardMarkup::from(keyboad)
     }
 
-    // 获取玩家
+    // 获取双方玩家
     fn get_players(&self) -> String {
         let mut players = String::new();
         if let Some(player_cross) = &self.player_cross {
@@ -237,7 +238,7 @@ impl Game {
         players
     }
 
-    // 获取玩家
+    // 获取下一位轮到的玩家
     fn get_next_player(&self) -> String {
         self.turn.to_string()
     }
