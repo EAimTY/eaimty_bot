@@ -293,7 +293,7 @@ fn try_parse_callback(data: String) -> Option<PiecePosition> {
                     if let Ok(col) = col.parse::<usize>() {
                         if row < 3 && col < 3 {
                             if let None = data.next() {
-                                return Some(PiecePosition { row, col });
+                                return Some(PiecePosition::new(row, col));
                             }
                         }
                     }
