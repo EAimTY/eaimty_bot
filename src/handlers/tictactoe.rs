@@ -38,7 +38,7 @@ struct PiecePosition {
 }
 
 impl PiecePosition {
-    fn new(row: usize, col: usize) -> Self {
+    fn from(row: usize, col: usize) -> Self {
         Self { row, col }
     }
 }
@@ -96,7 +96,7 @@ impl Game {
         self.data[pos.row][pos.col]
     }
 
-    // 设定指定位子的棋子，失败时返回 Err(ActionError::CellNotEmpty)
+    // 设定指定位子的棋子，失败时返回 Err(ActionError)
     fn set(&mut self, pos: PiecePosition, piece: Piece) -> Result<(), ActionError> {
         if self.get(pos) == Piece::Empty {
             self.data[pos.row][pos.col] = piece;
@@ -155,6 +155,7 @@ impl Game {
         Ok(self.get_game_state())
     }
 
+    // 设定下一位轮到的玩家
     fn next_turn(&mut self) {
         self.turn = match self.turn {
             Piece::Cross => Piece::Nought,
@@ -166,29 +167,29 @@ impl Game {
     fn get_game_state(&self) -> GameState {
         // 纵向检查
         for row in 0..3 {
-            if self.get(PiecePosition::new(row, 0)) != Piece::Empty
-                && self.get(PiecePosition::new(row, 0)) == self.get(PiecePosition::new(row, 1))
-                && self.get(PiecePosition::new(row, 0)) == self.get(PiecePosition::new(row, 2))
+            if self.get(PiecePosition::from(row, 0)) != Piece::Empty
+                && self.get(PiecePosition::from(row, 0)) == self.get(PiecePosition::from(row, 1))
+                && self.get(PiecePosition::from(row, 0)) == self.get(PiecePosition::from(row, 2))
             {
                 return GameState::Win;
             }
         }
         // 横向检查
         for col in 0..3 {
-            if self.get(PiecePosition::new(0, col)) != Piece::Empty
-                && self.get(PiecePosition::new(0, col)) == self.get(PiecePosition::new(1, col))
-                && self.get(PiecePosition::new(0, col)) == self.get(PiecePosition::new(2, col))
+            if self.get(PiecePosition::from(0, col)) != Piece::Empty
+                && self.get(PiecePosition::from(0, col)) == self.get(PiecePosition::from(1, col))
+                && self.get(PiecePosition::from(0, col)) == self.get(PiecePosition::from(2, col))
             {
                 return GameState::Win;
             }
         }
         // 对角线检查
-        if (self.get(PiecePosition::new(0, 0)) != Piece::Empty
-            && self.get(PiecePosition::new(0, 0)) == self.get(PiecePosition::new(1, 1))
-            && self.get(PiecePosition::new(0, 0)) == self.get(PiecePosition::new(2, 2)))
-            || (self.get(PiecePosition::new(0, 2)) != Piece::Empty
-                && self.get(PiecePosition::new(0, 2)) == self.get(PiecePosition::new(1, 1))
-                && self.get(PiecePosition::new(0, 2)) == self.get(PiecePosition::new(2, 0)))
+        if (self.get(PiecePosition::from(0, 0)) != Piece::Empty
+            && self.get(PiecePosition::from(0, 0)) == self.get(PiecePosition::from(1, 1))
+            && self.get(PiecePosition::from(0, 0)) == self.get(PiecePosition::from(2, 2)))
+            || (self.get(PiecePosition::from(0, 2)) != Piece::Empty
+                && self.get(PiecePosition::from(0, 2)) == self.get(PiecePosition::from(1, 1))
+                && self.get(PiecePosition::from(0, 2)) == self.get(PiecePosition::from(2, 0)))
         {
             return GameState::Win;
         }
@@ -196,7 +197,7 @@ impl Game {
         let mut is_all_filled = true;
         for row in 0..3 {
             for col in 0..3 {
-                if self.get(PiecePosition::new(row, col)) == Piece::Empty {
+                if self.get(PiecePosition::from(row, col)) == Piece::Empty {
                     is_all_filled = false;
                 }
             }
@@ -214,7 +215,7 @@ impl Game {
             let mut keyboad_col: Vec<InlineKeyboardButton> = Vec::new();
             for row in 0..3 {
                 keyboad_col.push(InlineKeyboardButton::new(
-                    self.get(PiecePosition::new(row, col)).to_string(),
+                    self.get(PiecePosition::from(row, col)).to_string(),
                     InlineKeyboardButtonKind::CallbackData(format!("tictactoe_{}_{}", row, col)),
                 ));
             }
@@ -223,7 +224,7 @@ impl Game {
         InlineKeyboardMarkup::from(keyboad)
     }
 
-    // 获取玩家
+    // 获取双方玩家
     fn get_players(&self) -> String {
         let mut players = String::new();
         if let Some(player_cross) = &self.player_cross {
@@ -237,7 +238,7 @@ impl Game {
         players
     }
 
-    // 获取玩家
+    // 获取下一位轮到的玩家
     fn get_next_player(&self) -> String {
         self.turn.to_string()
     }
@@ -255,7 +256,7 @@ impl Game {
     }
 }
 
-// session 中正在进行的棋局列表
+// 正在进行的棋局列表
 #[derive(Serialize, Deserialize)]
 struct GameList {
     list: HashMap<i64, Game>,
@@ -293,7 +294,7 @@ fn try_parse_callback(data: String) -> Option<PiecePosition> {
                     if let Ok(col) = col.parse::<usize>() {
                         if row < 3 && col < 3 {
                             if let None = data.next() {
-                                return Some(PiecePosition { row, col });
+                                return Some(PiecePosition::from(row, col));
                             }
                         }
                     }
@@ -337,9 +338,9 @@ pub async fn tictactoe_inlinekeyboard_handler(
                 .get_session(SessionId::new(chat_id, 0))?;
             let mut game_list = session.get("tictactoe").await?.unwrap_or(GameList::new());
             let mut game = game_list.get(message_id);
-            // 尝试落子
+            // 尝试操作棋局
             match game.try_put(pos, user.clone()) {
-                // 落子成功
+                // 操作成功
                 Ok(game_state) => {
                     let method: EditMessageText;
                     // 匹配棋局状态
@@ -356,6 +357,7 @@ pub async fn tictactoe_inlinekeyboard_handler(
                                 ),
                             )
                             .reply_markup(game.get_inline_keyboard());
+                            // 存储棋局
                             game_list.update_and_check_empty(message_id, Some(game.clone()));
                             session.set("tictactoe", &game_list).await?;
                         }
@@ -370,6 +372,7 @@ pub async fn tictactoe_inlinekeyboard_handler(
                                     game.get_game_board()
                                 ),
                             );
+                            // 清理棋局列表
                             if game_list.update_and_check_empty(message_id, None) {
                                 session.remove("tictactoe").await?;
                             } else {
@@ -388,6 +391,7 @@ pub async fn tictactoe_inlinekeyboard_handler(
                                     user.first_name
                                 ),
                             );
+                            // 清理棋局列表
                             if game_list.update_and_check_empty(message_id, None) {
                                 session.remove("tictactoe").await?;
                             } else {
@@ -400,7 +404,7 @@ pub async fn tictactoe_inlinekeyboard_handler(
                     let method = AnswerCallbackQuery::new(query.id);
                     context.api.execute(method).await?;
                 }
-                // 落子失败
+                // 操作失败
                 Err(err) => {
                     // 以错误提示回应 callback
                     let method = AnswerCallbackQuery::new(query.id)
