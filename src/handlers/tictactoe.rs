@@ -41,6 +41,27 @@ impl PiecePosition {
     fn from(row: usize, col: usize) -> Self {
         Self { row, col }
     }
+
+    // 尝试解析 callback data，返回目标落子位置
+    fn try_parse_callback(data: String) -> Option<Self> {
+        if data.starts_with("tictactoe_") {
+            let mut data = data[10..].split('_');
+            if let Some(row) = data.next() {
+                if let Ok(row) = row.parse::<usize>() {
+                    if let Some(col) = data.next() {
+                        if let Ok(col) = col.parse::<usize>() {
+                            if row < 3 && col < 3 {
+                                if let None = data.next() {
+                                    return Some(Self::from(row, col));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
 }
 
 // 棋局状态
@@ -284,27 +305,6 @@ impl GameList {
     }
 }
 
-// 尝试解析 callback data，返回目标落子位置
-fn try_parse_callback(data: String) -> Option<PiecePosition> {
-    if data.starts_with("tictactoe_") {
-        let mut data = data[10..].split('_');
-        if let Some(row) = data.next() {
-            if let Ok(row) = row.parse::<usize>() {
-                if let Some(col) = data.next() {
-                    if let Ok(col) = col.parse::<usize>() {
-                        if row < 3 && col < 3 {
-                            if let None = data.next() {
-                                return Some(PiecePosition::from(row, col));
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-    None
-}
-
 #[handler(command = "/tictactoe")]
 pub async fn tictactoe_command_handler(
     context: &Context,
@@ -327,7 +327,7 @@ pub async fn tictactoe_inlinekeyboard_handler(
     // 检查非空 query
     if let Some(data) = query.data {
         // 尝试 parse callback data
-        if let Some(pos) = try_parse_callback(data) {
+        if let Some(pos) = PiecePosition::try_parse_callback(data) {
             let message = query.message.unwrap();
             let chat_id = message.get_chat_id();
             let message_id = message.id;
