@@ -367,7 +367,7 @@ pub async fn tictactoe_inlinekeyboard_handler(
                                 chat_id,
                                 message_id,
                                 format!(
-                                    "Tic-Tac-Toe\n\n{}\n\n{}平局",
+                                    "Tic-Tac-Toe\n\n{}\n{}平局",
                                     game.get_players(),
                                     game.get_game_board()
                                 ),
@@ -385,7 +385,7 @@ pub async fn tictactoe_inlinekeyboard_handler(
                                 chat_id,
                                 message_id,
                                 format!(
-                                    "Tic-Tac-Toe\n\n{}\n\n{}\n\n{} 赢了",
+                                    "Tic-Tac-Toe\n\n{}\n\n{}\n{} 赢了",
                                     game.get_players(),
                                     game.get_game_board(),
                                     user.first_name

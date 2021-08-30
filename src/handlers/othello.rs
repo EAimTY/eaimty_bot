@@ -577,15 +577,15 @@ impl Game {
         }
         match black_count.cmp(&white_count) {
             cmp::Ordering::Less => format!(
-                "{}\n\n⚫：{} ⚪：{}\n\n⚪ 赢了",
+                "{}\n⚫：{} ⚪：{}\n\n⚪ 赢了",
                 board, black_count, white_count
             ),
             cmp::Ordering::Greater => format!(
-                "{}\n\n⚫：{} ⚪：{}\n\n⚫ 赢了",
+                "{}\n⚫：{} ⚪：{}\n\n⚫ 赢了",
                 board, black_count, white_count
             ),
             cmp::Ordering::Equal => format!(
-                "{}\n\n⚫：{} ⚪：{}\n\n平局",
+                "{}\n⚫：{} ⚪：{}\n\n平局",
                 board, black_count, white_count
             ),
         }
