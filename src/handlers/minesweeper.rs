@@ -427,7 +427,7 @@ pub async fn minesweeper_inlinekeyboard_handler(
                         .await?;
                     None
                 }
-            } else {
+            } else if splits[0] == "none" {
                 context
                     .api
                     .execute(AnswerCallbackQuery::new(query.id))
