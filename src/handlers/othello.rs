@@ -51,6 +51,27 @@ impl PiecePosition {
     fn from(row: usize, col: usize) -> Self {
         Self { row, col }
     }
+
+    // 尝试解析 callback data，返回目标落子位置
+    fn try_parse_callback(data: String) -> Option<Self> {
+        if data.starts_with("othello_") {
+            let mut data = data[8..].split('_');
+            if let Some(row) = data.next() {
+                if let Ok(row) = row.parse::<usize>() {
+                    if let Some(col) = data.next() {
+                        if let Ok(col) = col.parse::<usize>() {
+                            if row < 8 && col < 8 {
+                                if let None = data.next() {
+                                    return Some(Self::from(row, col));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        None
+    }
 }
 
 // 落子失败类型
@@ -577,17 +598,16 @@ impl Game {
         }
         match black_count.cmp(&white_count) {
             cmp::Ordering::Less => format!(
-                "{}\n\n⚫：{} ⚪：{}\n\n⚪ 赢了",
+                "{}\n⚫：{} ⚪：{}\n\n⚪ 赢了",
                 board, black_count, white_count
             ),
             cmp::Ordering::Greater => format!(
-                "{}\n\n⚫：{} ⚪：{}\n\n⚫ 赢了",
+                "{}\n⚫：{} ⚪：{}\n\n⚫ 赢了",
                 board, black_count, white_count
             ),
-            cmp::Ordering::Equal => format!(
-                "{}\n\n⚫：{} ⚪：{}\n\n平局",
-                board, black_count, white_count
-            ),
+            cmp::Ordering::Equal => {
+                format!("{}\n⚫：{} ⚪：{}\n\n平局", board, black_count, white_count)
+            }
         }
     }
 }
@@ -620,27 +640,6 @@ impl GameList {
     }
 }
 
-// 尝试解析 callback data，返回目标落子位置
-fn try_parse_callback(data: String) -> Option<PiecePosition> {
-    if data.starts_with("othello_") {
-        let mut data = data[8..].split('_');
-        if let Some(row) = data.next() {
-            if let Ok(row) = row.parse::<usize>() {
-                if let Some(col) = data.next() {
-                    if let Ok(col) = col.parse::<usize>() {
-                        if row < 8 && col < 8 {
-                            if let None = data.next() {
-                                return Some(PiecePosition::from(row, col));
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-    None
-}
-
 #[handler(command = "/othello")]
 pub async fn othello_command_handler(
     context: &Context,
@@ -663,7 +662,7 @@ pub async fn othello_inlinekeyboard_handler(
     // 检查非空 query
     if let Some(data) = query.data {
         // 尝试 parse callback data
-        if let Some(pos) = try_parse_callback(data) {
+        if let Some(pos) = PiecePosition::try_parse_callback(data) {
             let message = query.message.unwrap();
             let chat_id = message.get_chat_id();
             let message_id = message.id;
