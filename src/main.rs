@@ -92,8 +92,8 @@ async fn run(token: String, proxy: Option<String>, webhook_port: Option<String>)
     dispatcher.add_handler(handlers::dart::dart_keyword_handler);
     dispatcher.add_handler(handlers::dice::dice_command_handler);
     dispatcher.add_handler(handlers::dice::dice_keyword_handler);
-    dispatcher.add_handler(handlers::minesweeper::minesweeper_command_handler);
-    dispatcher.add_handler(handlers::minesweeper::minesweeper_inlinekeyboard_handler);
+    // dispatcher.add_handler(handlers::minesweeper::minesweeper_command_handler);
+    // dispatcher.add_handler(handlers::minesweeper::minesweeper_inlinekeyboard_handler);
     dispatcher.add_handler(handlers::ocr::ocr_command_handler);
     dispatcher.add_handler(handlers::ocr::ocr_image_handler);
     dispatcher.add_handler(handlers::ocr::ocr_inlinekeyboard_handler);
