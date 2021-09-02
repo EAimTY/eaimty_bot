@@ -2,7 +2,6 @@ use crate::{context::Context, error::ErrorHandler};
 use carapax::{
     handler,
     methods::{AnswerCallbackQuery, EditMessageText, SendMessage},
-    session::SessionId,
     types::{
         CallbackQuery, Command, InlineKeyboardButton, InlineKeyboardButtonKind,
         InlineKeyboardMarkup, ReplyMarkup,
@@ -11,10 +10,7 @@ use carapax::{
 };
 use rand::Rng;
 use serde::{Deserialize, Serialize};
-use std::{
-    collections::{HashMap, VecDeque},
-    fmt,
-};
+use std::{collections::VecDeque, fmt};
 
 // 地雷情况
 #[derive(Copy, Clone, Serialize, Deserialize)]
@@ -96,6 +92,7 @@ impl fmt::Display for MineBox {
 }
 
 // 位置类型
+#[derive(Clone)]
 struct BoxPosition {
     index: Option<usize>,
     row: usize,
@@ -267,7 +264,20 @@ impl Game {
                 let mut map = vec![MineBox::new(true); mine_count];
                 map.append(&mut vec![MineBox::new(false); height * width - mine_count]);
                 // 打乱地雷位置并计算每块周围的地雷数量
-                Self::map_calc_mine_count(Self::map_reorder(map, map_size), map_size)
+                map = Self::map_calc_mine_count(Self::map_reorder(map, map_size), map_size);
+                // Unmask 一片区域作为起始线索
+                loop {
+                    let rnd = rand::thread_rng().gen_range(0..height * width);
+                    if let BoxType::MineCount(mine_count) = map[rnd].get_box_type() {
+                        if mine_count == 0 {
+                            break Self::unmask_from_position(
+                                &BoxPosition::from_index(rnd, map_size),
+                                map,
+                                map_size,
+                            );
+                        }
+                    }
+                }
             },
             height,
             width,
@@ -304,18 +314,52 @@ impl Game {
         map
     }
 
-    // 重新生成地图
-    fn regenerate_map(mut self) {
-        let map_size = (self.height, self.width);
-        self.map = Self::map_calc_mine_count(Self::map_reorder(self.map, map_size), map_size);
-    }
-
     // 检查地图中有目标块
     fn contains(&self, pos: &BoxPosition) -> bool {
         if self.height > pos.get_row() && self.width > pos.get_col() {
             return true;
         }
         false
+    }
+
+    // 在传入的地图上，由周围地雷数为 0 的目标块 Unmask 一片无雷区域
+    fn unmask_from_position(
+        pos: &BoxPosition,
+        mut map: Vec<MineBox>,
+        map_size: (usize, usize),
+    ) -> Vec<MineBox> {
+        // 创建待遍历队列
+        let mut queue = VecDeque::new();
+        queue.push_back((*pos).clone());
+        // 待遍历队列不为空时，遍历队列头部周围的位置
+        while let Some(pos) = queue.pop_front() {
+            // Unmask 当前块
+            map[&pos] = {
+                let mut mine_box = map[&pos];
+                mine_box.set_mask_type(MaskType::Unmasked);
+                mine_box
+            };
+            // 遍历当前块的周围块
+            for around_pos in BoxesAround::from(&pos, map_size) {
+                let mut mine_box = map[&around_pos];
+                // 仅处理 Masked 块
+                if let MaskType::Masked = mine_box.get_mask_type() {
+                    if let BoxType::MineCount(mine_count) = mine_box.get_box_type() {
+                        if mine_count > 0 {
+                            // 块周围有地雷，仅 Unmask 块本身
+                            map[&around_pos] = {
+                                mine_box.set_mask_type(MaskType::Unmasked);
+                                mine_box
+                            }
+                        } else {
+                            // 块周围没有地雷，入待遍历队列
+                            queue.push_back(around_pos);
+                        }
+                    }
+                }
+            }
+        }
+        map
     }
 
     // Unmask 所有块
@@ -345,7 +389,6 @@ impl Game {
 
     // 点击地图中目标块
     fn click(&mut self, mut pos: BoxPosition) -> GameState {
-        let game_state;
         // 为目标位置计算下标
         pos.set_index((self.height, self.width));
         // 获取目标块并处理
@@ -361,46 +404,17 @@ impl Game {
                             mine_box
                         }
                     } else {
-                        // 块周围没有地雷，继续遍历周围块的周围块
-                        // 创建待遍历队列
-                        let mut queue = VecDeque::new();
-                        queue.push_back(pos);
-                        // 待遍历队列不为空时，遍历队列头部周围的位置
-                        while let Some(pos) = queue.pop_front() {
-                            // Unmask 当前块
-                            self.map[&pos] = {
-                                let mut mine_box = self.map[&pos];
-                                mine_box.set_mask_type(MaskType::Unmasked);
-                                mine_box
-                            };
-                            // 遍历当前块的周围块
-                            for around_pos in BoxesAround::from(&pos, (self.height, self.width)) {
-                                let mut mine_box = self.map[&around_pos];
-                                // 仅处理 Masked 块
-                                if let MaskType::Masked = mine_box.get_mask_type() {
-                                    if let BoxType::MineCount(mine_count) = mine_box.get_box_type()
-                                    {
-                                        if mine_count > 0 {
-                                            // 块周围有地雷，仅 Unmask 块本身
-                                            self.map[&around_pos] = {
-                                                mine_box.set_mask_type(MaskType::Unmasked);
-                                                mine_box
-                                            }
-                                        } else {
-                                            // 块周围没有地雷，入待遍历队列
-                                            queue.push_back(around_pos);
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                        // 块周围没有地雷，继续遍历并 Unmask 周围块的周围块
+                        self.map = Self::unmask_from_position(
+                            &pos,
+                            self.map.clone(),
+                            (self.height, self.width),
+                        );
                     }
                     // 检查游戏是否已经成功
                     if self.is_succeeded() {
                         self.unmask_all();
-                        game_state = GameState::Succeeded;
-                    } else {
-                        game_state = GameState::OnGoing;
+                        return GameState::Succeeded;
                     }
                 } else {
                     // 点击了地雷，游戏失败，标记目标块为爆炸
@@ -409,19 +423,17 @@ impl Game {
                         mine_box
                     };
                     self.unmask_all();
-                    game_state = GameState::Failed;
+                    return GameState::Failed;
                 }
             }
             MaskType::Unmasked => {
                 // 判断是否可插旗标记
-                game_state = GameState::OnGoing;
+                // TODO
             }
-            _ => {
-                // 不处理对已插旗块或已爆炸块的操作
-                game_state = GameState::OnGoing;
-            }
+            // 不处理对已插旗块或已爆炸块的操作
+            _ => (),
         }
-        game_state
+        GameState::OnGoing
     }
 
     // 获取按钮列表
@@ -457,34 +469,6 @@ impl Game {
     }
 }
 
-// 正在进行的棋局列表
-#[derive(Serialize, Deserialize)]
-struct GameList {
-    list: HashMap<i64, Game>,
-}
-
-impl GameList {
-    fn new() -> Self {
-        Self {
-            list: HashMap::new(),
-        }
-    }
-
-    fn get(&mut self, id: i64) -> Game {
-        self.list.entry(id).or_insert(Game::new((8, 8), 8)).clone()
-    }
-
-    fn update_and_check_empty(&mut self, id: i64, game: Option<Game>) -> bool {
-        if let Some(game) = game {
-            self.list.insert(id, game);
-            false
-        } else {
-            self.list.remove(&id);
-            self.list.is_empty()
-        }
-    }
-}
-
 #[handler(command = "/minesweeper")]
 pub async fn minesweeper_command_handler(
     context: &Context,
@@ -493,19 +477,18 @@ pub async fn minesweeper_command_handler(
     let message = command.get_message();
     let chat_id = message.get_chat_id();
     // 创建新游戏
-    let game = Game::new((8, 8), 8);
-    // 从 session 获取正在进行的游戏列表
-    let mut session = context
-        .session_manager
-        .get_session(SessionId::new(chat_id, 0))?;
-    let mut game_list = session.get("minesweeper").await?.unwrap_or(GameList::new());
-    // 向列表中添加游戏
-    game_list.update_and_check_empty(message.id, Some(game.clone()));
-    session.set("minesweeper", &game_list).await?;
+    let game = Game::new((12, 8), 18);
+    // 向 session 存储游戏
+    let mut session = context.session_manager.get_session(message)?;
+    session
+        .set(format!("minesweeper_{}", message.id), &game)
+        .await?;
     // 发送游戏地图
-    let method = SendMessage::new(chat_id, "扫雷").reply_markup(ReplyMarkup::InlineKeyboardMarkup(
-        game.get_inline_keyboard(),
-    ));
+    let method = SendMessage::new(chat_id, "扫雷")
+        .reply_markup(ReplyMarkup::InlineKeyboardMarkup(
+            game.get_inline_keyboard(),
+        ))
+        .reply_to_message_id(message.id);
     context.api.execute(method).await?;
     Ok(HandlerResult::Stop)
 }
@@ -520,62 +503,63 @@ pub async fn minesweeper_inlinekeyboard_handler(
         // 尝试 parse callback data
         if let Some(pos) = BoxPosition::try_parse_callback(data) {
             let message = query.message.unwrap();
-            let chat_id = message.get_chat_id();
-            let message_id = message.id;
-            let user = query.from;
-            // 从 session 获取游戏
-            let mut session = context
-                .session_manager
-                .get_session(SessionId::new(chat_id, 0))?;
-            let mut game_list = session.get("minesweeper").await?.unwrap_or(GameList::new());
-            let mut game = game_list.get(message_id);
-            // 检查操作目标块在游戏地图范围内
-            if game.contains(&pos) {
-                let method;
-                // 操作地图并检查游戏是否结束
-                match game.click(pos) {
-                    // 游戏失败
-                    GameState::Failed => {
-                        method = EditMessageText::new(
-                            chat_id,
-                            message_id,
-                            format!("扫雷失败\n\n{}", game.get_game_board()),
-                        );
-                        // 清理游戏列表
-                        if game_list.update_and_check_empty(message_id, None) {
-                            session.remove("minesweeper").await?;
-                        } else {
-                            session.set("minesweeper", &game_list).await?;
+            // 尝试获取触发游戏的原命令消息
+            if let Some(command_message) = &message.reply_to {
+                // 尝试从 session 获取游戏
+                let mut session = context
+                    .session_manager
+                    .get_session(command_message.as_ref())?;
+                let game: Option<Game> = session
+                    .get(format!("minesweeper_{}", command_message.id))
+                    .await?;
+                if let Some(mut game) = game {
+                    // 检查操作目标块在游戏地图范围内
+                    let chat_id = message.get_chat_id();
+                    if game.contains(&pos) {
+                        let method;
+                        // 操作地图并检查游戏是否结束
+                        match game.click(pos) {
+                            // 游戏失败
+                            GameState::Failed => {
+                                method = EditMessageText::new(
+                                    chat_id,
+                                    message.id,
+                                    format!("扫雷失败\n\n{}", game.get_game_board()),
+                                );
+                                // 清理游戏列表
+                                session
+                                    .remove(format!("minesweeper_{}", command_message.id))
+                                    .await?;
+                            }
+                            // 游戏正在进行
+                            GameState::OnGoing => {
+                                method = EditMessageText::new(chat_id, message.id, "扫雷")
+                                    .reply_markup(game.get_inline_keyboard());
+                                // 存储游戏
+                                session
+                                    .set(format!("minesweeper_{}", command_message.id), &game)
+                                    .await?;
+                            }
+                            // 游戏成功
+                            GameState::Succeeded => {
+                                method = EditMessageText::new(
+                                    chat_id,
+                                    message.id,
+                                    format!("扫雷成功\n\n{}", game.get_game_board()),
+                                );
+                                // 清理游戏列表
+                                session
+                                    .remove(format!("minesweeper_{}", command_message.id))
+                                    .await?;
+                            }
                         }
-                    }
-                    // 游戏正在进行
-                    GameState::OnGoing => {
-                        method = EditMessageText::new(chat_id, message_id, "扫雷")
-                            .reply_markup(game.get_inline_keyboard());
-                        // 存储游戏
-                        game_list.update_and_check_empty(message_id, Some(game.clone()));
-                        session.set("minesweeper", &game_list).await?;
-                    }
-                    // 游戏成功
-                    GameState::Succeeded => {
-                        method = EditMessageText::new(
-                            chat_id,
-                            message_id,
-                            format!("扫雷成功\n\n{}", game.get_game_board()),
-                        );
-                        // 清理游戏列表
-                        if game_list.update_and_check_empty(message_id, None) {
-                            session.remove("minesweeper").await?;
-                        } else {
-                            session.set("minesweeper", &game_list).await?;
-                        }
+                        context.api.execute(method).await?;
+                        // 回应 callback
+                        let method = AnswerCallbackQuery::new(query.id);
+                        context.api.execute(method).await?;
+                        return Ok(HandlerResult::Stop);
                     }
                 }
-                context.api.execute(method).await?;
-                // 回应 callback
-                let method = AnswerCallbackQuery::new(query.id);
-                context.api.execute(method).await?;
-                return Ok(HandlerResult::Stop);
             }
         }
     }
