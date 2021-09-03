@@ -10,7 +10,10 @@ use carapax::{
 };
 use rand::Rng;
 use serde::{Deserialize, Serialize};
-use std::{collections::VecDeque, fmt};
+use std::{
+    collections::{HashMap, VecDeque},
+    fmt,
+};
 
 // 地雷情况
 #[derive(Copy, Clone, Serialize, Deserialize)]
@@ -253,6 +256,7 @@ struct Game {
     width: usize,
     height: usize,
     mine_count: usize,
+    players: HashMap<String, u8>,
 }
 
 impl Game {
@@ -282,6 +286,7 @@ impl Game {
             width,
             height,
             mine_count,
+            players: HashMap::new(),
         }
     }
 
@@ -388,13 +393,16 @@ impl Game {
     }
 
     // 点击地图中目标块
-    fn click(&mut self, mut pos: BoxPosition) -> GameState {
+    fn click(&mut self, mut pos: BoxPosition, player: String) -> GameState {
         // 为目标位置计算下标
         pos.set_index((self.width, self.height));
         // 获取目标块并处理
         let mut mine_box = self.map[&pos];
         match mine_box.get_mask_type() {
             MaskType::Masked => {
+                // 操作用户点击数 + 1
+                let player_click_count = self.players.entry(player).or_insert(0);
+                *player_click_count += 1;
                 // 判断是否点击了地雷
                 if let BoxType::MineCount(mine_count) = mine_box.get_box_type() {
                     if mine_count > 0 {
@@ -436,22 +444,46 @@ impl Game {
                             match self.map[&around_pos].get_mask_type() {
                                 MaskType::Masked => masked_count += 1,
                                 MaskType::Flagged => flagged_count += 1,
-                                _ => ()
+                                _ => (),
                             }
                         }
                         // 周围 Masked 块数等于该块周围的地雷数时，将周围 Masked 块标记
-                        if masked_count == mine_count {
+                        if masked_count + flagged_count == mine_count {
+                            // 操作用户点击数 + 1
+                            let player_click_count = self.players.entry(player).or_insert(0);
+                            *player_click_count += 1;
+                            // 标记周围 Masked 块
                             for around_pos in BoxesAround::from(&pos, (self.width, self.height)) {
                                 if let MaskType::Masked = self.map[&around_pos].get_mask_type() {
                                     self.map[&around_pos].set_mask_type(MaskType::Flagged);
                                 }
                             }
-                        }
                         // 周围 Flagged 块数等于该块周围的地雷数时，将周围 Masked 块 Unmask
-                        if flagged_count == mine_count {
+                        } else if flagged_count == mine_count {
+                            // 操作用户点击数 + 1
+                            let player_click_count = self.players.entry(player).or_insert(0);
+                            *player_click_count += 1;
+                            // Unmask 周围 Masked 块
                             for around_pos in BoxesAround::from(&pos, (self.width, self.height)) {
-                                if let MaskType::Masked = self.map[&around_pos].get_mask_type() {
-                                    self.map[&around_pos].set_mask_type(MaskType::Unmasked);
+                                let mut mine_box = self.map[&around_pos];
+                                if let MaskType::Masked = mine_box.get_mask_type() {
+                                    if let BoxType::MineCount(mine_count) = mine_box.get_box_type()
+                                    {
+                                        if mine_count > 0 {
+                                            // 当前迭代块周围有地雷，仅 Unmask 块本身
+                                            self.map[&around_pos] = {
+                                                mine_box.set_mask_type(MaskType::Unmasked);
+                                                mine_box
+                                            }
+                                        } else {
+                                            // 当前迭代块周围没有地雷，继续遍历并 Unmask 周围块
+                                            self.map = Self::unmask_from_position(
+                                                &around_pos,
+                                                self.map.clone(),
+                                                (self.width, self.height),
+                                            );
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -486,19 +518,13 @@ impl Game {
         InlineKeyboardMarkup::from(keyboad)
     }
 
-    // 获取文字形式的地图
-    fn get_game_board(&self) -> String {
-        let mut map = String::new();
-        for row in 0..self.height {
-            for col in 0..self.width {
-                map.push_str(
-                    &self.map[&BoxPosition::from_coords((col, row), (self.width, self.height))]
-                        .to_string(),
-                );
-            }
-            map.push_str("\n");
+    // 获取玩家列表
+    fn get_players(&self) -> String {
+        let mut players = String::new();
+        for (player, player_click_count) in &self.players {
+            players.push_str(&format!("{}：{} 项操作\n", player, player_click_count));
         }
-        map
+        players
     }
 }
 
@@ -551,14 +577,19 @@ pub async fn minesweeper_inlinekeyboard_handler(
                     if game.contains(&pos) {
                         let method;
                         // 操作地图并检查游戏是否结束
-                        match game.click(pos) {
+                        match game.click(pos, query.from.get_full_name()) {
                             // 游戏失败
                             GameState::Failed => {
                                 method = EditMessageText::new(
                                     chat_id,
                                     message.id,
-                                    format!("扫雷失败\n\n{}", game.get_game_board()),
-                                );
+                                    format!(
+                                        "扫雷失败！\n\n{}\n{} 引爆了地雷",
+                                        game.get_players(),
+                                        query.from.get_full_name()
+                                    ),
+                                )
+                                .reply_markup(game.get_inline_keyboard());
                                 // 清理游戏列表
                                 session
                                     .remove(format!("minesweeper_{}", command_message.id))
@@ -566,8 +597,12 @@ pub async fn minesweeper_inlinekeyboard_handler(
                             }
                             // 游戏正在进行
                             GameState::OnGoing => {
-                                method = EditMessageText::new(chat_id, message.id, "扫雷")
-                                    .reply_markup(game.get_inline_keyboard());
+                                method = EditMessageText::new(
+                                    chat_id,
+                                    message.id,
+                                    format!("扫雷\n\n{}", game.get_players()),
+                                )
+                                .reply_markup(game.get_inline_keyboard());
                                 // 存储游戏
                                 session
                                     .set(format!("minesweeper_{}", command_message.id), &game)
@@ -578,8 +613,9 @@ pub async fn minesweeper_inlinekeyboard_handler(
                                 method = EditMessageText::new(
                                     chat_id,
                                     message.id,
-                                    format!("扫雷成功\n\n{}", game.get_game_board()),
-                                );
+                                    format!("扫雷成功！\n\n{}", game.get_players()),
+                                )
+                                .reply_markup(game.get_inline_keyboard());
                                 // 清理游戏列表
                                 session
                                     .remove(format!("minesweeper_{}", command_message.id))
