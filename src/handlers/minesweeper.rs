@@ -67,8 +67,8 @@ impl MineBox {
 impl fmt::Display for MineBox {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.mask_type {
-            MaskType::Unmasked => write!(f, "➕"),
-            MaskType::Masked => {
+            MaskType::Masked => write!(f, "➕"),
+            MaskType::Unmasked => {
                 if let BoxType::MineCount(mine_count) = self.box_type {
                     match mine_count {
                         1 => write!(f, "1️⃣"),
@@ -92,18 +92,18 @@ impl fmt::Display for MineBox {
 }
 
 // 位置类型
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 struct BoxPosition {
     index: Option<usize>,
-    row: usize,
     col: usize,
+    row: usize,
 }
 
 impl BoxPosition {
     // 从坐标获取位置
     fn from_coords(coords: (usize, usize), map_size: (usize, usize)) -> Self {
         Self {
-            index: Some(coords.1 * map_size.1 + coords.0),
+            index: Some(coords.1 * map_size.0 + coords.0),
             col: coords.0,
             row: coords.1,
         }
@@ -113,8 +113,8 @@ impl BoxPosition {
     fn from_index(index: usize, map_size: (usize, usize)) -> Self {
         Self {
             index: Some(index),
-            col: index % map_size.1,
-            row: index / map_size.1,
+            col: index % map_size.0,
+            row: index / map_size.0,
         }
     }
 
@@ -129,7 +129,7 @@ impl BoxPosition {
 
     // 通过输入的地图大小计算下标
     fn set_index(&mut self, map_size: (usize, usize)) {
-        self.index = Some(self.row * map_size.1 + self.col);
+        self.index = Some(self.row * map_size.0 + self.col);
     }
 
     // 尝试解析 callback data，返回目标坐标（可能超出棋盘）
@@ -186,8 +186,8 @@ struct BoxesAround {
     // 迭代器位置
     offset: usize,
     // 地图大小
-    map_height: usize,
     map_width: usize,
+    map_height: usize,
 }
 
 impl BoxesAround {
@@ -208,8 +208,8 @@ impl BoxesAround {
                 ]
             },
             offset: 0,
-            map_height: map_size.0,
-            map_width: map_size.1,
+            map_width: map_size.0,
+            map_height: map_size.1,
         }
     }
 }
@@ -223,16 +223,16 @@ impl Iterator for BoxesAround {
         for (index, (col, row)) in self.around[self.offset..].iter().enumerate() {
             // 判断位置合法
             if col >= &0
-                && col < &(self.map_height as i8)
+                && col < &(self.map_width as i8)
                 && row >= &0
-                && row < &(self.map_width as i8)
+                && row < &(self.map_height as i8)
             {
                 // 更新 offset 并返回位置
                 self.offset += index;
                 self.offset += 1;
                 return Some(BoxPosition::from_coords(
                     (*col as usize, *row as usize),
-                    (self.map_height, self.map_width),
+                    (self.map_width, self.map_height),
                 ));
             }
         }
@@ -250,24 +250,24 @@ enum GameState {
 #[derive(Clone, Serialize, Deserialize)]
 struct Game {
     map: Vec<MineBox>,
-    height: usize,
     width: usize,
+    height: usize,
     mine_count: usize,
 }
 
 impl Game {
     fn new(map_size: (usize, usize), mine_count: usize) -> Self {
-        let (height, width) = map_size;
+        let (width, height) = map_size;
         Self {
             map: {
                 // 新建一个大小为 height * width，头部 mine_count 块为地雷的地图
                 let mut map = vec![MineBox::new(true); mine_count];
-                map.append(&mut vec![MineBox::new(false); height * width - mine_count]);
+                map.append(&mut vec![MineBox::new(false); width * height - mine_count]);
                 // 打乱地雷位置并计算每块周围的地雷数量
                 map = Self::map_calc_mine_count(Self::map_reorder(map, map_size), map_size);
                 // Unmask 一片区域作为起始线索
                 loop {
-                    let rnd = rand::thread_rng().gen_range(0..height * width);
+                    let rnd = rand::thread_rng().gen_range(0..width * height);
                     if let BoxType::MineCount(mine_count) = map[rnd].get_box_type() {
                         if mine_count == 0 {
                             break Self::unmask_from_position(
@@ -279,25 +279,25 @@ impl Game {
                     }
                 }
             },
-            height,
             width,
+            height,
             mine_count,
         }
     }
 
     // 打乱地雷位置
     fn map_reorder(mut map: Vec<MineBox>, map_size: (usize, usize)) -> Vec<MineBox> {
-        let (height, width) = map_size;
-        for index in 0..height * width {
-            map.swap(index, rand::thread_rng().gen_range(0..height * width));
+        let (width, height) = map_size;
+        for index in 0..width * height {
+            map.swap(index, rand::thread_rng().gen_range(0..width * height));
         }
         map
     }
 
     // 计算每块周围的地雷数量
     fn map_calc_mine_count(mut map: Vec<MineBox>, map_size: (usize, usize)) -> Vec<MineBox> {
-        let (height, width) = map_size;
-        for index in 0..height * width {
+        let (width, height) = map_size;
+        for index in 0..width * height {
             if let BoxType::MineCount(_) = map[index].get_box_type() {
                 let mut counter: u8 = 0;
                 // 遍历周围块
@@ -316,7 +316,7 @@ impl Game {
 
     // 检查地图中有目标块
     fn contains(&self, pos: &BoxPosition) -> bool {
-        if self.height > pos.get_row() && self.width > pos.get_col() {
+        if self.width > pos.get_col() && self.height > pos.get_row() {
             return true;
         }
         false
@@ -364,7 +364,7 @@ impl Game {
 
     // Unmask 所有块
     fn unmask_all(&mut self) {
-        for index in 0..self.height * self.width {
+        for index in 0..self.width * self.height {
             let mut mine_box = self.map[index];
             if let MaskType::Masked = mine_box.get_mask_type() {
                 self.map[index] = {
@@ -377,7 +377,7 @@ impl Game {
 
     // 检查游戏是否成功
     fn is_succeeded(&self) -> bool {
-        for index in 0..self.height * self.width {
+        for index in 0..self.width * self.height {
             if let MaskType::Masked = self.map[index].get_mask_type() {
                 if let BoxType::MineCount(_) = self.map[index].get_box_type() {
                     return false;
@@ -390,7 +390,7 @@ impl Game {
     // 点击地图中目标块
     fn click(&mut self, mut pos: BoxPosition) -> GameState {
         // 为目标位置计算下标
-        pos.set_index((self.height, self.width));
+        pos.set_index((self.width, self.height));
         // 获取目标块并处理
         let mut mine_box = self.map[&pos];
         match mine_box.get_mask_type() {
@@ -408,7 +408,7 @@ impl Game {
                         self.map = Self::unmask_from_position(
                             &pos,
                             self.map.clone(),
-                            (self.height, self.width),
+                            (self.width, self.height),
                         );
                     }
                     // 检查游戏是否已经成功
@@ -443,7 +443,7 @@ impl Game {
             let mut keyboad_row: Vec<InlineKeyboardButton> = Vec::new();
             for col in 0..self.width {
                 keyboad_row.push(InlineKeyboardButton::new(
-                    self.map[&BoxPosition::from_coords((col, row), (self.height, self.width))]
+                    self.map[&BoxPosition::from_coords((col, row), (self.width, self.height))]
                         .to_string(),
                     InlineKeyboardButtonKind::CallbackData(format!("minesweeper_{}_{}", col, row)),
                 ));
@@ -459,7 +459,7 @@ impl Game {
         for row in 0..self.height {
             for col in 0..self.width {
                 map.push_str(
-                    &self.map[&BoxPosition::from_coords((col, row), (self.height, self.width))]
+                    &self.map[&BoxPosition::from_coords((col, row), (self.width, self.height))]
                         .to_string(),
                 );
             }
@@ -477,7 +477,7 @@ pub async fn minesweeper_command_handler(
     let message = command.get_message();
     let chat_id = message.get_chat_id();
     // 创建新游戏
-    let game = Game::new((12, 8), 16);
+    let game = Game::new((8, 12), 24);
     // 向 session 存储游戏
     let mut session = context.session_manager.get_session(message)?;
     session
