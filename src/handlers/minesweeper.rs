@@ -1,139 +1,484 @@
 use crate::{context::Context, error::ErrorHandler};
 use carapax::{
     handler,
-    methods::{AnswerCallbackQuery, EditMessageReplyMarkup, EditMessageText, SendMessage},
-    session::SessionId,
+    methods::{AnswerCallbackQuery, EditMessageText, SendMessage},
     types::{
         CallbackQuery, Command, InlineKeyboardButton, InlineKeyboardButtonKind,
-        InlineKeyboardMarkup, ReplyMarkup, User,
+        InlineKeyboardMarkup, ReplyMarkup,
     },
     HandlerResult,
 };
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::{collections::VecDeque, fmt};
-use tokio::try_join;
 
-const ARROUND: [(i32, i32); 8] = [
-    (-1, -1),
-    (-1, 0),
-    (-1, 1),
-    (0, -1),
-    (0, 1),
-    (1, -1),
-    (1, 0),
-    (1, 1),
-];
-
-#[derive(Copy, Clone, PartialEq, Serialize, Deserialize)]
-enum MineBoxes {
+// 地雷情况
+#[derive(Copy, Clone, Serialize, Deserialize)]
+enum BoxType {
     Mine,
-    Num(u8),
-    Explode,
+    MineCount(u8),
 }
 
-impl fmt::Display for MineBoxes {
+// 显示情况
+#[derive(Copy, Clone, Serialize, Deserialize)]
+enum MaskType {
+    Masked,
+    Unmasked,
+    Flagged,
+    Exploded,
+}
+
+// 块类型
+#[derive(Copy, Clone, Serialize, Deserialize)]
+struct MineBox {
+    box_type: BoxType,
+    mask_type: MaskType,
+}
+
+impl MineBox {
+    fn new(is_mine: bool) -> Self {
+        Self {
+            box_type: if is_mine {
+                BoxType::Mine
+            } else {
+                BoxType::MineCount(0)
+            },
+            mask_type: MaskType::Masked,
+        }
+    }
+
+    fn get_box_type(&self) -> BoxType {
+        self.box_type
+    }
+
+    fn set_mine_count(&mut self, mine_count: u8) {
+        self.box_type = BoxType::MineCount(mine_count);
+    }
+
+    fn get_mask_type(&self) -> MaskType {
+        self.mask_type
+    }
+
+    fn set_mask_type(&mut self, mask_type: MaskType) {
+        self.mask_type = mask_type;
+    }
+}
+
+impl fmt::Display for MineBox {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            MineBoxes::Explode => write!(f, "💥"),
-            MineBoxes::Mine => write!(f, "💣"),
-            MineBoxes::Num(0) => write!(f, "    "),
-            MineBoxes::Num(n) => write!(f, "{:4}", n),
+        match self.mask_type {
+            MaskType::Masked => write!(f, "➕"),
+            MaskType::Unmasked => {
+                if let BoxType::MineCount(mine_count) = self.box_type {
+                    match mine_count {
+                        1 => write!(f, "1️⃣"),
+                        2 => write!(f, "2️⃣"),
+                        3 => write!(f, "3️⃣"),
+                        4 => write!(f, "4️⃣"),
+                        5 => write!(f, "5️⃣"),
+                        6 => write!(f, "6️⃣"),
+                        7 => write!(f, "7️⃣"),
+                        8 => write!(f, "8️⃣"),
+                        _ => write!(f, "➖"),
+                    }
+                } else {
+                    write!(f, "💣")
+                }
+            }
+            MaskType::Flagged => write!(f, "🚩"),
+            MaskType::Exploded => write!(f, "💥"),
         }
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Serialize, Deserialize)]
-enum MineBoxesState {
-    Know(MineBoxes),
-    Unknow,
-    Flag,
-}
-
-impl fmt::Display for MineBoxesState {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            MineBoxesState::Flag => write!(f, "🚩"),
-            MineBoxesState::Unknow => write!(f, "⬜"),
-            MineBoxesState::Know(item) => write!(f, "{}", item),
-        }
-    }
-}
-
-enum MineSweeperGameState {
-    Win,
-    Fail,
-    OnGoing,
-}
-
-#[derive(Serialize, Deserialize)]
-struct MineSweeper {
-    id: i64,
-    row: usize,
+// 位置类型
+#[derive(Clone)]
+struct BoxPosition {
+    index: Option<usize>,
     col: usize,
-    mines: usize,
-    data: Vec<MineBoxes>,
-    mask: Vec<MineBoxesState>,
-    explode_user: Option<User>,
+    row: usize,
 }
 
-impl MineSweeper {
-    fn new(id: i64, row: usize, col: usize, mines: usize) -> MineSweeper {
-        let mut arr = vec![MineBoxes::Num(0); row * col];
-        for i in 0..mines {
-            arr[i] = MineBoxes::Mine;
+impl BoxPosition {
+    // 从坐标获取位置
+    fn from_coords(coords: (usize, usize), map_size: (usize, usize)) -> Self {
+        Self {
+            index: Some(coords.1 * map_size.0 + coords.0),
+            col: coords.0,
+            row: coords.1,
         }
+    }
 
-        for i in 0..row * col {
-            let rng = rand::thread_rng().gen_range(0..row * col);
-            let a = arr[i];
-            arr[i] = arr[rng];
-            arr[rng] = a;
+    // 从下标获取位置
+    fn from_index(index: usize, map_size: (usize, usize)) -> Self {
+        Self {
+            index: Some(index),
+            col: index % map_size.0,
+            row: index / map_size.0,
         }
+    }
 
-        for r in 0..row {
-            for c in 0..col {
-                if let MineBoxes::Mine = arr[r * col + c] {
-                    for (_r, _c) in ARROUND {
-                        if r as i32 + _r >= 0
-                            && r as i32 + _r < col as i32
-                            && c as i32 + _c >= 0
-                            && c as i32 + _c < row as i32
-                        {
-                            match arr[(r as i32 + _r) as usize * col + (c as i32 + _c) as usize] {
-                                MineBoxes::Num(n) => {
-                                    arr[(r as i32 + _r) as usize * col + (c as i32 + _c) as usize] =
-                                        MineBoxes::Num(n + 1)
-                                }
-                                _ => (),
+    // 从坐标获取位置（不获取地图大小，故返回一个没有下标的 BoxPosition）
+    fn from_coords_no_index(coords: (usize, usize)) -> Self {
+        Self {
+            index: None,
+            col: coords.0,
+            row: coords.1,
+        }
+    }
+
+    // 通过输入的地图大小计算下标
+    fn set_index(&mut self, map_size: (usize, usize)) {
+        self.index = Some(self.row * map_size.0 + self.col);
+    }
+
+    // 尝试解析 callback data，返回目标坐标（可能超出棋盘）
+    fn try_parse_callback(data: String) -> Option<Self> {
+        if data.starts_with("minesweeper_") {
+            let mut data = data[12..].split('_');
+            if let Some(col) = data.next() {
+                if let Ok(col) = col.parse::<usize>() {
+                    if let Some(row) = data.next() {
+                        if let Ok(row) = row.parse::<usize>() {
+                            if let None = data.next() {
+                                return Some(Self::from_coords_no_index((col, row)));
                             }
                         }
                     }
                 }
             }
         }
+        None
+    }
 
-        MineSweeper {
-            id,
-            row,
-            col,
-            mines,
-            data: arr,
-            mask: vec![MineBoxesState::Unknow; row * col],
-            explode_user: None,
+    fn get_index(&self) -> usize {
+        self.index.unwrap_or(0)
+    }
+
+    fn get_row(&self) -> usize {
+        self.row
+    }
+
+    fn get_col(&self) -> usize {
+        self.col
+    }
+}
+
+// 将位置类型作为 Vec<MineBox> 下标
+impl std::ops::Index<&BoxPosition> for Vec<MineBox> {
+    type Output = MineBox;
+
+    fn index(&self, index: &BoxPosition) -> &MineBox {
+        &self[index.get_index()]
+    }
+}
+
+impl std::ops::IndexMut<&BoxPosition> for Vec<MineBox> {
+    fn index_mut(&mut self, index: &BoxPosition) -> &mut MineBox {
+        &mut self[index.get_index()]
+    }
+}
+
+// 用于迭代周围块的类型
+struct BoxesAround {
+    // 保存可能相邻的 8 个位置的元组数组
+    around: [(i8, i8); 8],
+    // 迭代器位置
+    offset: usize,
+    // 地图大小
+    map_width: usize,
+    map_height: usize,
+}
+
+impl BoxesAround {
+    fn from(pos: &BoxPosition, map_size: (usize, usize)) -> Self {
+        Self {
+            around: {
+                // 通过输入的位置计算出可能相邻的 8 个位置
+                let (col, row) = (pos.get_col() as i8, pos.get_row() as i8);
+                [
+                    (col - 1, row - 1),
+                    (col - 1, row),
+                    (col - 1, row + 1),
+                    (col, row - 1),
+                    (col, row + 1),
+                    (col + 1, row - 1),
+                    (col + 1, row),
+                    (col + 1, row + 1),
+                ]
+            },
+            offset: 0,
+            map_width: map_size.0,
+            map_height: map_size.1,
+        }
+    }
+}
+
+// 周围块迭代器实现
+impl Iterator for BoxesAround {
+    type Item = BoxPosition;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        // 从下标为 offset 处开始遍历可能相邻的位置
+        for (index, (col, row)) in self.around[self.offset..].iter().enumerate() {
+            // 判断位置合法
+            if col >= &0
+                && col < &(self.map_width as i8)
+                && row >= &0
+                && row < &(self.map_height as i8)
+            {
+                // 更新 offset 并返回位置
+                self.offset += index;
+                self.offset += 1;
+                return Some(BoxPosition::from_coords(
+                    (*col as usize, *row as usize),
+                    (self.map_width, self.map_height),
+                ));
+            }
+        }
+        None
+    }
+}
+
+enum GameState {
+    Failed,
+    OnGoing,
+    Succeeded,
+}
+
+// 地图
+#[derive(Clone, Serialize, Deserialize)]
+struct Game {
+    map: Vec<MineBox>,
+    width: usize,
+    height: usize,
+    mine_count: usize,
+}
+
+impl Game {
+    fn new(map_size: (usize, usize), mine_count: usize) -> Self {
+        let (width, height) = map_size;
+        Self {
+            map: {
+                // 新建一个大小为 height * width，头部 mine_count 块为地雷的地图
+                let mut map = vec![MineBox::new(true); mine_count];
+                map.append(&mut vec![MineBox::new(false); width * height - mine_count]);
+                // 打乱地雷位置并计算每块周围的地雷数量
+                map = Self::map_calc_mine_count(Self::map_reorder(map, map_size), map_size);
+                // Unmask 一片区域作为起始线索
+                loop {
+                    let rnd = rand::thread_rng().gen_range(0..width * height);
+                    if let BoxType::MineCount(mine_count) = map[rnd].get_box_type() {
+                        if mine_count == 0 {
+                            break Self::unmask_from_position(
+                                &BoxPosition::from_index(rnd, map_size),
+                                map,
+                                map_size,
+                            );
+                        }
+                    }
+                }
+            },
+            width,
+            height,
+            mine_count,
         }
     }
 
+    // 打乱地雷位置
+    fn map_reorder(mut map: Vec<MineBox>, map_size: (usize, usize)) -> Vec<MineBox> {
+        let (width, height) = map_size;
+        for index in 0..width * height {
+            map.swap(index, rand::thread_rng().gen_range(0..width * height));
+        }
+        map
+    }
+
+    // 计算每块周围的地雷数量
+    fn map_calc_mine_count(mut map: Vec<MineBox>, map_size: (usize, usize)) -> Vec<MineBox> {
+        let (width, height) = map_size;
+        for index in 0..width * height {
+            if let BoxType::MineCount(_) = map[index].get_box_type() {
+                let mut counter: u8 = 0;
+                // 遍历周围块
+                for around_pos in
+                    BoxesAround::from(&BoxPosition::from_index(index, map_size), map_size)
+                {
+                    if let BoxType::Mine = map[&around_pos].get_box_type() {
+                        counter += 1;
+                    }
+                }
+                map[index].set_mine_count(counter);
+            }
+        }
+        map
+    }
+
+    // 检查地图中有目标块
+    fn contains(&self, pos: &BoxPosition) -> bool {
+        if self.width > pos.get_col() && self.height > pos.get_row() {
+            return true;
+        }
+        false
+    }
+
+    // 在传入的地图上，由周围地雷数为 0 的目标块 Unmask 一片无雷区域
+    fn unmask_from_position(
+        pos: &BoxPosition,
+        mut map: Vec<MineBox>,
+        map_size: (usize, usize),
+    ) -> Vec<MineBox> {
+        // 创建待遍历队列
+        let mut queue = VecDeque::new();
+        queue.push_back((*pos).clone());
+        // 待遍历队列不为空时，遍历队列头部周围的位置
+        while let Some(pos) = queue.pop_front() {
+            // Unmask 当前块
+            map[&pos] = {
+                let mut mine_box = map[&pos];
+                mine_box.set_mask_type(MaskType::Unmasked);
+                mine_box
+            };
+            // 遍历当前块的周围块
+            for around_pos in BoxesAround::from(&pos, map_size) {
+                let mut mine_box = map[&around_pos];
+                // 仅处理 Masked 块
+                if let MaskType::Masked = mine_box.get_mask_type() {
+                    if let BoxType::MineCount(mine_count) = mine_box.get_box_type() {
+                        if mine_count > 0 {
+                            // 块周围有地雷，仅 Unmask 块本身
+                            map[&around_pos] = {
+                                mine_box.set_mask_type(MaskType::Unmasked);
+                                mine_box
+                            }
+                        } else {
+                            // 块周围没有地雷，入待遍历队列
+                            queue.push_back(around_pos);
+                        }
+                    }
+                }
+            }
+        }
+        map
+    }
+
+    // Unmask 所有块
+    fn unmask_all(&mut self) {
+        for index in 0..self.width * self.height {
+            let mut mine_box = self.map[index];
+            if let MaskType::Masked = mine_box.get_mask_type() {
+                self.map[index] = {
+                    mine_box.set_mask_type(MaskType::Unmasked);
+                    mine_box
+                };
+            }
+        }
+    }
+
+    // 检查游戏是否成功
+    fn is_succeeded(&self) -> bool {
+        for index in 0..self.width * self.height {
+            if let MaskType::Masked = self.map[index].get_mask_type() {
+                if let BoxType::MineCount(_) = self.map[index].get_box_type() {
+                    return false;
+                }
+            }
+        }
+        true
+    }
+
+    // 点击地图中目标块
+    fn click(&mut self, mut pos: BoxPosition) -> GameState {
+        // 为目标位置计算下标
+        pos.set_index((self.width, self.height));
+        // 获取目标块并处理
+        let mut mine_box = self.map[&pos];
+        match mine_box.get_mask_type() {
+            MaskType::Masked => {
+                // 判断是否点击了地雷
+                if let BoxType::MineCount(mine_count) = mine_box.get_box_type() {
+                    if mine_count > 0 {
+                        // 块周围有地雷，仅 Unmask 块本身
+                        self.map[&pos] = {
+                            mine_box.set_mask_type(MaskType::Unmasked);
+                            mine_box
+                        }
+                    } else {
+                        // 块周围没有地雷，继续遍历并 Unmask 周围块的周围块
+                        self.map = Self::unmask_from_position(
+                            &pos,
+                            self.map.clone(),
+                            (self.width, self.height),
+                        );
+                    }
+                    // 检查游戏是否已经成功
+                    if self.is_succeeded() {
+                        self.unmask_all();
+                        return GameState::Succeeded;
+                    }
+                } else {
+                    // 点击了地雷，游戏失败，标记目标块为爆炸
+                    self.map[&pos] = {
+                        mine_box.set_mask_type(MaskType::Exploded);
+                        mine_box
+                    };
+                    self.unmask_all();
+                    return GameState::Failed;
+                }
+            }
+            MaskType::Unmasked => {
+                // 判断是否已确定目标块周围情况
+                if let BoxType::MineCount(mine_count) = mine_box.get_box_type() {
+                    if mine_count > 0 {
+                        let mut masked_count: u8 = 0;
+                        let mut flagged_count: u8 = 0;
+                        for around_pos in BoxesAround::from(&pos, (self.width, self.height)) {
+                            match self.map[&around_pos].get_mask_type() {
+                                MaskType::Masked => masked_count += 1,
+                                MaskType::Flagged => flagged_count += 1,
+                                _ => ()
+                            }
+                        }
+                        // 周围 Masked 块数等于该块周围的地雷数时，将周围 Masked 块标记
+                        if masked_count == mine_count {
+                            for around_pos in BoxesAround::from(&pos, (self.width, self.height)) {
+                                if let MaskType::Masked = self.map[&around_pos].get_mask_type() {
+                                    self.map[&around_pos].set_mask_type(MaskType::Flagged);
+                                }
+                            }
+                        }
+                        // 周围 Flagged 块数等于该块周围的地雷数时，将周围 Masked 块 Unmask
+                        if flagged_count == mine_count {
+                            for around_pos in BoxesAround::from(&pos, (self.width, self.height)) {
+                                if let MaskType::Masked = self.map[&around_pos].get_mask_type() {
+                                    self.map[&around_pos].set_mask_type(MaskType::Unmasked);
+                                }
+                            }
+                        }
+                        // 检查游戏是否已经成功
+                        if self.is_succeeded() {
+                            self.unmask_all();
+                            return GameState::Succeeded;
+                        }
+                    }
+                }
+            }
+            // 不处理对已插旗块或已爆炸块的操作
+            _ => (),
+        }
+        GameState::OnGoing
+    }
+
+    // 获取按钮列表
     fn get_inline_keyboard(&self) -> InlineKeyboardMarkup {
         let mut keyboad: Vec<Vec<InlineKeyboardButton>> = Vec::new();
-        for r in 0..self.row {
+        for row in 0..self.height {
             let mut keyboad_row: Vec<InlineKeyboardButton> = Vec::new();
-            for c in 0..self.col {
+            for col in 0..self.width {
                 keyboad_row.push(InlineKeyboardButton::new(
-                    self.mask[r * self.col + c].to_string(),
-                    InlineKeyboardButtonKind::CallbackData(
-                        String::from("minesweeper_") + &r.to_string() + "_" + &c.to_string(),
-                    ),
+                    self.map[&BoxPosition::from_coords((col, row), (self.width, self.height))]
+                        .to_string(),
+                    InlineKeyboardButtonKind::CallbackData(format!("minesweeper_{}_{}", col, row)),
                 ));
             }
             keyboad.push(keyboad_row);
@@ -141,175 +486,19 @@ impl MineSweeper {
         InlineKeyboardMarkup::from(keyboad)
     }
 
-    fn get_end_inline_keyboard(&self, state: &MineSweeperGameState) -> InlineKeyboardMarkup {
-        let mut keyboad: Vec<Vec<InlineKeyboardButton>> = Vec::new();
-        for r in 0..self.row {
-            let mut keyboad_row: Vec<InlineKeyboardButton> = Vec::new();
-            for c in 0..self.col {
-                keyboad_row.push(InlineKeyboardButton::new(
-                    {
-                        match state {
-                            MineSweeperGameState::Win => self.mask[r * self.col + c].to_string(),
-                            MineSweeperGameState::Fail => self.data[r * self.col + c].to_string(),
-                            MineSweeperGameState::OnGoing => "".to_string(),
-                        }
-                    },
-                    InlineKeyboardButtonKind::CallbackData(
-                        String::from("none_") + &r.to_string() + "_" + &c.to_string(),
-                    ),
-                ));
+    // 获取文字形式的地图
+    fn get_game_board(&self) -> String {
+        let mut map = String::new();
+        for row in 0..self.height {
+            for col in 0..self.width {
+                map.push_str(
+                    &self.map[&BoxPosition::from_coords((col, row), (self.width, self.height))]
+                        .to_string(),
+                );
             }
-            keyboad.push(keyboad_row);
+            map.push_str("\n");
         }
-        InlineKeyboardMarkup::from(keyboad)
-    }
-
-    fn set_flag(&mut self, r: usize, c: usize) {
-        match self.mask[r * self.col + c] {
-            MineBoxesState::Unknow => self.mask[r * self.col + c] = MineBoxesState::Flag,
-            _ => (),
-        }
-    }
-
-    fn open(&mut self, r: usize, c: usize) {
-        let mut queue = VecDeque::new();
-        match self.mask[r * self.col + c] {
-            MineBoxesState::Unknow => match self.data[r * self.col + c] {
-                MineBoxes::Mine => {
-                    self.data[r * self.col + c] = MineBoxes::Explode;
-                    self.mask[r * self.col + c] = MineBoxesState::Know(MineBoxes::Explode);
-                }
-                MineBoxes::Num(_) => {
-                    queue.push_back((r, c));
-                    loop {
-                        let cell = match queue.pop_front() {
-                            Some(cell) => cell,
-                            None => break,
-                        };
-                        match self.data[cell.0 * self.col + cell.1] {
-                            MineBoxes::Num(0) => {
-                                self.mask[cell.0 * self.col + cell.1] =
-                                    MineBoxesState::Know(self.data[cell.0 * self.col + cell.1]);
-
-                                for (_r, _c) in ARROUND {
-                                    if cell.0 as i32 + _r >= 0
-                                        && cell.0 as i32 + _r < self.col as i32
-                                        && cell.1 as i32 + _c >= 0
-                                        && cell.1 as i32 + _c < self.row as i32
-                                    {
-                                        if let MineBoxesState::Unknow =
-                                            self.mask[(cell.0 as i32 + _r) as usize * self.col
-                                                + (cell.1 as i32 + _c) as usize]
-                                        {
-                                            queue.push_back((
-                                                (cell.0 as i32 + _r) as usize,
-                                                (cell.1 as i32 + _c) as usize,
-                                            ))
-                                        }
-                                    }
-                                }
-                            }
-                            MineBoxes::Num(_) => {
-                                self.mask[cell.0 * self.col + cell.1] =
-                                    MineBoxesState::Know(self.data[cell.0 * self.col + cell.1])
-                            }
-                            _ => (),
-                        }
-                    }
-                }
-                _ => (),
-            },
-            _ => (),
-        }
-    }
-
-    fn open_num(&mut self, r: usize, c: usize) {
-        match self.mask[r * self.col + c] {
-            MineBoxesState::Know(MineBoxes::Num(0)) => (),
-            MineBoxesState::Know(MineBoxes::Num(n)) => {
-                let mut flags = 0;
-                let mut unknows = 0;
-                for (_r, _c) in ARROUND {
-                    if r as i32 + _r >= 0
-                        && r as i32 + _r < self.col as i32
-                        && c as i32 + _c >= 0
-                        && c as i32 + _c < self.row as i32
-                    {
-                        if let MineBoxesState::Flag = self.mask
-                            [(r as i32 + _r) as usize * self.col + (c as i32 + _c) as usize]
-                        {
-                            flags += 1;
-                        }
-                        if let MineBoxesState::Unknow = self.mask
-                            [(r as i32 + _r) as usize * self.col + (c as i32 + _c) as usize]
-                        {
-                            unknows += 1;
-                        }
-                    }
-                }
-
-                if n == flags {
-                    for (_r, _c) in ARROUND {
-                        if r as i32 + _r >= 0
-                            && r as i32 + _r < self.col as i32
-                            && c as i32 + _c >= 0
-                            && c as i32 + _c < self.row as i32
-                        {
-                            self.open((r as i32 + _r) as usize, (c as i32 + _c) as usize);
-                        }
-                    }
-                }
-                if n == flags + unknows {
-                    for (_r, _c) in ARROUND {
-                        if r as i32 + _r >= 0
-                            && r as i32 + _r < self.col as i32
-                            && c as i32 + _c >= 0
-                            && c as i32 + _c < self.row as i32
-                        {
-                            self.set_flag((r as i32 + _r) as usize, (c as i32 + _c) as usize);
-                        }
-                    }
-                }
-            }
-            _ => (),
-        }
-    }
-
-    fn check(&self) -> MineSweeperGameState {
-        let mut is_win = true;
-        for r in 0..self.row {
-            for c in 0..self.col {
-                match self.mask[r * self.col + c] {
-                    MineBoxesState::Know(MineBoxes::Explode) => return MineSweeperGameState::Fail,
-
-                    MineBoxesState::Unknow | MineBoxesState::Flag => {
-                        if let MineBoxes::Mine = self.data[r * self.col + c] {
-                        } else {
-                            is_win = false;
-                        }
-                    }
-                    _ => continue,
-                }
-            }
-        }
-        if is_win {
-            MineSweeperGameState::Win
-        } else {
-            MineSweeperGameState::OnGoing
-        }
-    }
-}
-
-trait MineVec {
-    fn get_index(&mut self, id: i64) -> Result<usize, ()>;
-}
-
-impl MineVec for Vec<MineSweeper> {
-    fn get_index(&mut self, id: i64) -> Result<usize, ()> {
-        match self.iter().position(|v| v.id == id) {
-            Some(index) => Ok(index),
-            None => Err(()),
-        }
+        map
     }
 }
 
@@ -320,91 +509,20 @@ pub async fn minesweeper_command_handler(
 ) -> Result<HandlerResult, ErrorHandler> {
     let message = command.get_message();
     let chat_id = message.get_chat_id();
-    let args = command.get_args();
-    let mut session = context
-        .session_manager
-        .get_session(SessionId::new(chat_id, 0))?;
-    let mut minesweeper = session.get("minesweeper").await?.unwrap_or(Vec::new());
-    match args.len() {
-        0 => {
-            minesweeper.push(MineSweeper::new(message.id, 8, 8, 10));
-
-            let method = SendMessage::new(chat_id, "Mine")
-                .reply_markup(ReplyMarkup::InlineKeyboardMarkup(
-                    minesweeper[minesweeper.len() - 1].get_inline_keyboard(),
-                ))
-                .reply_to_message_id(message.id);
-            context.api.execute(method).await?;
-            session.set("minesweeper", &minesweeper).await?;
-        }
-        3 => {
-            let row: usize = match args[0].parse() {
-                Ok(row) => row,
-                Err(_) => {
-                    context
-                        .api
-                        .execute(
-                            SendMessage::new(chat_id, "Wrong args!")
-                                .reply_to_message_id(message.id),
-                        )
-                        .await?;
-                    return Ok(HandlerResult::Stop);
-                }
-            };
-            let col: usize = match args[1].parse() {
-                Ok(col) => col,
-                Err(_) => {
-                    context
-                        .api
-                        .execute(
-                            SendMessage::new(chat_id, "Wrong args!")
-                                .reply_to_message_id(message.id),
-                        )
-                        .await?;
-                    return Ok(HandlerResult::Stop);
-                }
-            };
-            let mines: usize = match args[2].parse() {
-                Ok(mines) => mines,
-                Err(_) => {
-                    context
-                        .api
-                        .execute(
-                            SendMessage::new(chat_id, "Wrong args!")
-                                .reply_to_message_id(message.id),
-                        )
-                        .await?;
-                    return Ok(HandlerResult::Stop);
-                }
-            };
-            if row > 20 || col > 8 || mines > row * col / 2 || mines < row * col / 10 {
-                context
-                    .api
-                    .execute(
-                        SendMessage::new(chat_id, "Args out of range!")
-                            .reply_to_message_id(message.id),
-                    )
-                    .await?;
-                return Ok(HandlerResult::Stop);
-            } else {
-                minesweeper.push(MineSweeper::new(message.id, row, col, mines));
-                let method = SendMessage::new(chat_id, "Mine")
-                    .reply_markup(ReplyMarkup::InlineKeyboardMarkup(
-                        minesweeper[minesweeper.len() - 1].get_inline_keyboard(),
-                    ))
-                    .reply_to_message_id(message.id);
-                context.api.execute(method).await?;
-                session.set("minesweeper", &minesweeper).await?;
-            }
-        }
-        _ => {
-            context
-                .api
-                .execute(SendMessage::new(chat_id, "Wrong args!").reply_to_message_id(message.id))
-                .await?;
-        }
-    }
-
+    // 创建新游戏
+    let game = Game::new((8, 8), 9);
+    // 向 session 存储游戏
+    let mut session = context.session_manager.get_session(message)?;
+    session
+        .set(format!("minesweeper_{}", message.id), &game)
+        .await?;
+    // 发送游戏地图
+    let method = SendMessage::new(chat_id, "扫雷")
+        .reply_markup(ReplyMarkup::InlineKeyboardMarkup(
+            game.get_inline_keyboard(),
+        ))
+        .reply_to_message_id(message.id);
+    context.api.execute(method).await?;
     Ok(HandlerResult::Stop)
 }
 
@@ -413,111 +531,66 @@ pub async fn minesweeper_inlinekeyboard_handler(
     context: &Context,
     query: CallbackQuery,
 ) -> Result<HandlerResult, ErrorHandler> {
-    let data = query.data;
-    if let Some(data) = data {
-        let cell: Option<(usize, usize)> = {
-            let splits: Vec<&str> = data.split('_').collect();
-            if splits[0] == "minesweeper" {
-                if let (Ok(r), Ok(c)) = (splits[1].parse(), splits[2].parse()) {
-                    Some((r, c))
-                } else {
-                    context
-                        .api
-                        .execute(AnswerCallbackQuery::new(query.id))
-                        .await?;
-                    None
-                }
-            } else {
-                context
-                    .api
-                    .execute(AnswerCallbackQuery::new(query.id))
-                    .await?;
-                None
-            }
-        };
-        if let Some(cell) = cell {
+    // 检查非空 query
+    if let Some(data) = query.data {
+        // 尝试 parse callback data
+        if let Some(pos) = BoxPosition::try_parse_callback(data) {
             let message = query.message.unwrap();
-            let chat_id = message.get_chat_id();
-            let message_id = message.id;
-            let user = query.from;
-
-            let mut session = context
-                .session_manager
-                .get_session(SessionId::new(chat_id, 0))?;
-            let mut minesweeper = session.get("minesweeper").await?.unwrap_or(Vec::new());
-            let index = match minesweeper.get_index(message.reply_to.unwrap().id) {
-                Ok(index) => {
-                    minesweeper[index].id = message_id;
-                    loop {
-                        match minesweeper[index].data[cell.0 * minesweeper[index].col + cell.1] {
-                            MineBoxes::Num(0) => break,
-                            _ => {
-                                minesweeper[index] = MineSweeper::new(
-                                    message_id,
-                                    minesweeper[index].row,
-                                    minesweeper[index].col,
-                                    minesweeper[index].mines,
+            // 尝试获取触发游戏的原命令消息
+            if let Some(command_message) = &message.reply_to {
+                // 尝试从 session 获取游戏
+                let mut session = context
+                    .session_manager
+                    .get_session(command_message.as_ref())?;
+                let game: Option<Game> = session
+                    .get(format!("minesweeper_{}", command_message.id))
+                    .await?;
+                if let Some(mut game) = game {
+                    // 检查操作目标块在游戏地图范围内
+                    let chat_id = message.get_chat_id();
+                    if game.contains(&pos) {
+                        let method;
+                        // 操作地图并检查游戏是否结束
+                        match game.click(pos) {
+                            // 游戏失败
+                            GameState::Failed => {
+                                method = EditMessageText::new(
+                                    chat_id,
+                                    message.id,
+                                    format!("扫雷失败\n\n{}", game.get_game_board()),
                                 );
+                                // 清理游戏列表
+                                session
+                                    .remove(format!("minesweeper_{}", command_message.id))
+                                    .await?;
+                            }
+                            // 游戏正在进行
+                            GameState::OnGoing => {
+                                method = EditMessageText::new(chat_id, message.id, "扫雷")
+                                    .reply_markup(game.get_inline_keyboard());
+                                // 存储游戏
+                                session
+                                    .set(format!("minesweeper_{}", command_message.id), &game)
+                                    .await?;
+                            }
+                            // 游戏成功
+                            GameState::Succeeded => {
+                                method = EditMessageText::new(
+                                    chat_id,
+                                    message.id,
+                                    format!("扫雷成功\n\n{}", game.get_game_board()),
+                                );
+                                // 清理游戏列表
+                                session
+                                    .remove(format!("minesweeper_{}", command_message.id))
+                                    .await?;
                             }
                         }
-                    }
-                    index
-                }
-                Err(_) => match minesweeper.get_index(message_id) {
-                    Ok(index) => index,
-                    Err(_) => return Ok(HandlerResult::Stop),
-                },
-            };
-
-            let edit_message: Option<EditMessageText> = None;
-            match minesweeper[index].mask[cell.0 * minesweeper[index].col + cell.1] {
-                MineBoxesState::Know(MineBoxes::Num(0)) => (),
-                MineBoxesState::Know(MineBoxes::Num(_)) => {
-                    minesweeper[index].open_num(cell.0, cell.1)
-                }
-                MineBoxesState::Unknow => minesweeper[index].open(cell.0, cell.1),
-                _ => (),
-            }
-            match minesweeper[index].check() {
-                MineSweeperGameState::OnGoing => {
-                    session.set("minesweeper", &minesweeper).await?;
-                    let edit_reply_markup = EditMessageReplyMarkup::new(chat_id, message_id)
-                        .reply_markup(minesweeper[index].get_inline_keyboard());
-                    match edit_message {
-                        Some(edit_message) => {
-                            try_join!(
-                                context.api.execute(edit_message),
-                                context.api.execute(edit_reply_markup)
-                            )?;
-                        }
-                        None => {
-                            context.api.execute(edit_reply_markup).await?;
-                        }
-                    }
-                }
-                state => {
-                    let edit_reply_markup = EditMessageReplyMarkup::new(chat_id, message_id)
-                        .reply_markup(minesweeper[index].get_end_inline_keyboard(&state));
-                    context.api.execute(edit_reply_markup).await?;
-                    let method = match state {
-                        MineSweeperGameState::Win => SendMessage::new(chat_id, "WIN")
-                            .reply_to_message_id(minesweeper[index].id),
-                        MineSweeperGameState::Fail => SendMessage::new(
-                            chat_id,
-                            format!(
-                                "FAIL\n{} click the mine",
-                                user.username.unwrap_or(user.first_name)
-                            ),
-                        )
-                        .reply_to_message_id(minesweeper[index].id),
-                        _ => SendMessage::new(chat_id, "impossable"),
-                    };
-                    context.api.execute(method).await?;
-                    minesweeper.remove(index);
-                    if minesweeper.is_empty() {
-                        session.remove("minesweeper").await?;
-                    } else {
-                        session.set("minesweeper", &minesweeper).await?;
+                        context.api.execute(method).await?;
+                        // 回应 callback
+                        let method = AnswerCallbackQuery::new(query.id);
+                        context.api.execute(method).await?;
+                        return Ok(HandlerResult::Stop);
                     }
                 }
             }
