@@ -67,8 +67,8 @@ impl MineBox {
 impl fmt::Display for MineBox {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.mask_type {
-            MaskType::Masked => write!(f, "➕"),
-            MaskType::Unmasked => {
+            MaskType::Unmasked => write!(f, "➕"),
+            MaskType::Masked => {
                 if let BoxType::MineCount(mine_count) = self.box_type {
                     match mine_count {
                         1 => write!(f, "1️⃣"),
@@ -92,7 +92,7 @@ impl fmt::Display for MineBox {
 }
 
 // 位置类型
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 struct BoxPosition {
     index: Option<usize>,
     row: usize,
@@ -103,9 +103,9 @@ impl BoxPosition {
     // 从坐标获取位置
     fn from_coords(coords: (usize, usize), map_size: (usize, usize)) -> Self {
         Self {
-            index: Some(coords.0 * map_size.1 + coords.1),
-            row: coords.0,
-            col: coords.1,
+            index: Some(coords.1 * map_size.1 + coords.0),
+            col: coords.0,
+            row: coords.1,
         }
     }
 
@@ -113,8 +113,8 @@ impl BoxPosition {
     fn from_index(index: usize, map_size: (usize, usize)) -> Self {
         Self {
             index: Some(index),
-            row: index / map_size.1,
             col: index % map_size.1,
+            row: index / map_size.1,
         }
     }
 
@@ -122,8 +122,8 @@ impl BoxPosition {
     fn from_coords_no_index(coords: (usize, usize)) -> Self {
         Self {
             index: None,
-            row: coords.0,
-            col: coords.1,
+            col: coords.0,
+            row: coords.1,
         }
     }
 
@@ -136,12 +136,12 @@ impl BoxPosition {
     fn try_parse_callback(data: String) -> Option<Self> {
         if data.starts_with("minesweeper_") {
             let mut data = data[12..].split('_');
-            if let Some(row) = data.next() {
-                if let Ok(row) = row.parse::<usize>() {
-                    if let Some(col) = data.next() {
-                        if let Ok(col) = col.parse::<usize>() {
+            if let Some(col) = data.next() {
+                if let Ok(col) = col.parse::<usize>() {
+                    if let Some(row) = data.next() {
+                        if let Ok(row) = row.parse::<usize>() {
                             if let None = data.next() {
-                                return Some(Self::from_coords_no_index((row, col)));
+                                return Some(Self::from_coords_no_index((col, row)));
                             }
                         }
                     }
@@ -195,16 +195,16 @@ impl BoxesAround {
         Self {
             around: {
                 // 通过输入的位置计算出可能相邻的 8 个位置
-                let (row, col) = (pos.get_row() as i8, pos.get_col() as i8);
+                let (col, row) = (pos.get_col() as i8, pos.get_row() as i8);
                 [
-                    (row - 1, col - 1),
-                    (row, col - 1),
-                    (row + 1, col - 1),
-                    (row - 1, col),
-                    (row + 1, col),
-                    (row - 1, col + 1),
-                    (row, col + 1),
-                    (row + 1, col + 1),
+                    (col - 1, row - 1),
+                    (col - 1, row),
+                    (col - 1, row + 1),
+                    (col, row - 1),
+                    (col, row + 1),
+                    (col + 1, row - 1),
+                    (col + 1, row),
+                    (col + 1, row + 1),
                 ]
             },
             offset: 0,
@@ -220,18 +220,18 @@ impl Iterator for BoxesAround {
 
     fn next(&mut self) -> Option<Self::Item> {
         // 从下标为 offset 处开始遍历可能相邻的位置
-        for (index, (row, col)) in self.around[self.offset..].iter().enumerate() {
+        for (index, (col, row)) in self.around[self.offset..].iter().enumerate() {
             // 判断位置合法
-            if row >= &0
-                && row < &(self.map_height as i8)
-                && col >= &0
-                && col < &(self.map_width as i8)
+            if col >= &0
+                && col < &(self.map_height as i8)
+                && row >= &0
+                && row < &(self.map_width as i8)
             {
                 // 更新 offset 并返回位置
                 self.offset += index;
                 self.offset += 1;
                 return Some(BoxPosition::from_coords(
-                    (*row as usize, *col as usize),
+                    (*col as usize, *row as usize),
                     (self.map_height, self.map_width),
                 ));
             }
@@ -439,16 +439,16 @@ impl Game {
     // 获取按钮列表
     fn get_inline_keyboard(&self) -> InlineKeyboardMarkup {
         let mut keyboad: Vec<Vec<InlineKeyboardButton>> = Vec::new();
-        for col in 0..self.height {
-            let mut keyboad_col: Vec<InlineKeyboardButton> = Vec::new();
-            for row in 0..self.width {
-                keyboad_col.push(InlineKeyboardButton::new(
-                    self.map[&BoxPosition::from_coords((row, col), (self.height, self.width))]
+        for row in 0..self.height {
+            let mut keyboad_row: Vec<InlineKeyboardButton> = Vec::new();
+            for col in 0..self.width {
+                keyboad_row.push(InlineKeyboardButton::new(
+                    self.map[&BoxPosition::from_coords((col, row), (self.height, self.width))]
                         .to_string(),
-                    InlineKeyboardButtonKind::CallbackData(format!("minesweeper_{}_{}", row, col)),
+                    InlineKeyboardButtonKind::CallbackData(format!("minesweeper_{}_{}", col, row)),
                 ));
             }
-            keyboad.push(keyboad_col);
+            keyboad.push(keyboad_row);
         }
         InlineKeyboardMarkup::from(keyboad)
     }
@@ -456,10 +456,10 @@ impl Game {
     // 获取文字形式的地图
     fn get_game_board(&self) -> String {
         let mut map = String::new();
-        for col in 0..self.width {
-            for row in 0..self.height {
+        for row in 0..self.height {
+            for col in 0..self.width {
                 map.push_str(
-                    &self.map[&BoxPosition::from_coords((row, col), (self.height, self.width))]
+                    &self.map[&BoxPosition::from_coords((col, row), (self.height, self.width))]
                         .to_string(),
                 );
             }
@@ -477,7 +477,7 @@ pub async fn minesweeper_command_handler(
     let message = command.get_message();
     let chat_id = message.get_chat_id();
     // 创建新游戏
-    let game = Game::new((12, 8), 18);
+    let game = Game::new((12, 8), 16);
     // 向 session 存储游戏
     let mut session = context.session_manager.get_session(message)?;
     session
