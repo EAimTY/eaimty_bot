@@ -427,8 +427,41 @@ impl Game {
                 }
             }
             MaskType::Unmasked => {
-                // 判断是否可插旗标记
-                // TODO
+                // 判断是否已确定目标块周围情况
+                if let BoxType::MineCount(mine_count) = mine_box.get_box_type() {
+                    if mine_count > 0 {
+                        let mut masked_count: u8 = 0;
+                        let mut flagged_count: u8 = 0;
+                        for around_pos in BoxesAround::from(&pos, (self.width, self.height)) {
+                            match self.map[&around_pos].get_mask_type() {
+                                MaskType::Masked => masked_count += 1,
+                                MaskType::Flagged => flagged_count += 1,
+                                _ => ()
+                            }
+                        }
+                        // 周围 Masked 块数等于该块周围的地雷数时，将周围 Masked 块标记
+                        if masked_count == mine_count {
+                            for around_pos in BoxesAround::from(&pos, (self.width, self.height)) {
+                                if let MaskType::Masked = self.map[&around_pos].get_mask_type() {
+                                    self.map[&around_pos].set_mask_type(MaskType::Flagged);
+                                }
+                            }
+                        }
+                        // 周围 Flagged 块数等于该块周围的地雷数时，将周围 Masked 块 Unmask
+                        if flagged_count == mine_count {
+                            for around_pos in BoxesAround::from(&pos, (self.width, self.height)) {
+                                if let MaskType::Masked = self.map[&around_pos].get_mask_type() {
+                                    self.map[&around_pos].set_mask_type(MaskType::Unmasked);
+                                }
+                            }
+                        }
+                        // 检查游戏是否已经成功
+                        if self.is_succeeded() {
+                            self.unmask_all();
+                            return GameState::Succeeded;
+                        }
+                    }
+                }
             }
             // 不处理对已插旗块或已爆炸块的操作
             _ => (),
@@ -477,7 +510,7 @@ pub async fn minesweeper_command_handler(
     let message = command.get_message();
     let chat_id = message.get_chat_id();
     // 创建新游戏
-    let game = Game::new((8, 12), 24);
+    let game = Game::new((8, 8), 9);
     // 向 session 存储游戏
     let mut session = context.session_manager.get_session(message)?;
     session
