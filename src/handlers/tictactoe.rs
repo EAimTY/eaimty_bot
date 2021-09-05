@@ -92,13 +92,30 @@ impl Error for ActionError {
     }
 }
 
+// 存储玩家信息
+#[derive(Clone, Serialize, Deserialize)]
+struct Player {
+    id: i64,
+    name: String,
+}
+
+// 自动转换 carapax::types::User 到 Player
+impl From<&User> for Player {
+    fn from(user: &User) -> Self {
+        Self {
+            id: user.id,
+            name: user.get_full_name(),
+        }
+    }
+}
+
 // 棋局
 #[derive(Clone, Serialize, Deserialize)]
 struct Game {
     data: [[Piece; 3]; 3],
     turn: Piece,
-    player_cross: Option<User>,
-    player_nought: Option<User>,
+    player_cross: Option<Player>,
+    player_nought: Option<Player>,
 }
 
 impl Game {
@@ -126,13 +143,13 @@ impl Game {
     }
 
     // 尝试落子，成功时返回 Ok(棋局状态)，失败时返回 Err(ActionError)
-    fn try_put(&mut self, pos: PiecePosition, player: User) -> Result<GameState, ActionError> {
+    fn try_put(&mut self, pos: PiecePosition, user: &User) -> Result<GameState, ActionError> {
         // 轮到 Cross 落子
         if let Piece::Cross = self.turn {
             // 有玩家作为 Cross
             if let Some(player_cross) = &self.player_cross {
                 // 验证落子发起者
-                if &player == player_cross {
+                if user.id == player_cross.id {
                     match self.set(pos, Piece::Cross) {
                         Ok(_) => self.next_turn(),
                         Err(err) => return Err(err),
@@ -144,7 +161,7 @@ impl Game {
             } else {
                 match self.set(pos, Piece::Cross) {
                     Ok(_) => {
-                        self.player_cross = Some(player);
+                        self.player_cross = Some(user.into());
                         self.next_turn();
                     }
                     Err(err) => return Err(err),
@@ -153,7 +170,7 @@ impl Game {
         // 轮到 Nought 落子
         } else {
             if let Some(player_nought) = &self.player_nought {
-                if &player == player_nought {
+                if user.id == player_nought.id {
                     match self.set(pos, Piece::Nought) {
                         Ok(_) => self.next_turn(),
                         Err(err) => return Err(err),
@@ -164,7 +181,7 @@ impl Game {
             } else {
                 match self.set(pos, Piece::Nought) {
                     Ok(_) => {
-                        self.player_nought = Some(player);
+                        self.player_nought = Some(user.into());
                         self.next_turn();
                     }
                     Err(err) => return Err(err),
@@ -249,10 +266,10 @@ impl Game {
         let mut players = String::new();
         if let Some(player_cross) = &self.player_cross {
             players.push_str("❌：");
-            players += &player_cross.first_name;
+            players += &player_cross.name;
             if let Some(player_nought) = &self.player_nought {
                 players.push_str("\n⭕️：");
-                players += &player_nought.first_name;
+                players += &player_nought.name;
             }
         }
         players
@@ -260,7 +277,22 @@ impl Game {
 
     // 获取下一位轮到的玩家
     fn get_next_player(&self) -> String {
-        self.turn.to_string()
+        match self.turn {
+            Piece::Cross => {
+                if let Some(player) = &self.player_cross {
+                    player.name.clone()
+                } else {
+                    Piece::Cross.to_string()
+                }
+            }
+            _ => {
+                if let Some(player) = &self.player_nought {
+                    player.name.clone()
+                } else {
+                    Piece::Nought.to_string()
+                }
+            }
+        }
     }
 }
 
@@ -319,7 +351,7 @@ pub async fn tictactoe_inlinekeyboard_handler(
                     let chat_id = message.get_chat_id();
                     let user = query.from;
                     // 尝试操作棋局
-                    match game.try_put(pos, user.clone()) {
+                    match game.try_put(pos, &user) {
                         // 操作成功
                         Ok(game_state) => {
                             let edit_message_text;
