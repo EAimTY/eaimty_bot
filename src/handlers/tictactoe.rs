@@ -9,7 +9,7 @@ use carapax::{
     HandlerResult,
 };
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, error::Error, fmt};
+use std::{error::Error, fmt};
 
 // 棋子类型
 #[derive(Copy, Clone, PartialEq, Serialize, Deserialize)]
@@ -112,7 +112,7 @@ impl From<&User> for Player {
 // 棋局
 #[derive(Clone, Serialize, Deserialize)]
 struct Game {
-    data: [[Piece; 3]; 3],
+    user: [[Piece; 3]; 3],
     turn: Piece,
     player_cross: Option<Player>,
     player_nought: Option<Player>,
@@ -121,7 +121,7 @@ struct Game {
 impl Game {
     fn new() -> Self {
         Self {
-            data: [[Piece::Empty; 3]; 3],
+            user: [[Piece::Empty; 3]; 3],
             turn: Piece::Cross,
             player_cross: None,
             player_nought: None,
@@ -130,13 +130,13 @@ impl Game {
 
     // 获取指定位置的棋子类型
     fn get(&self, pos: PiecePosition) -> Piece {
-        self.data[pos.row][pos.col]
+        self.user[pos.row][pos.col]
     }
 
     // 设定指定位子的棋子，失败时返回 Err(ActionError)
     fn set(&mut self, pos: PiecePosition, piece: Piece) -> Result<(), ActionError> {
         if self.get(pos) == Piece::Empty {
-            self.data[pos.row][pos.col] = piece;
+            self.user[pos.row][pos.col] = piece;
             return Ok(());
         }
         Err(ActionError::CellNotEmpty)
@@ -296,12 +296,6 @@ impl Game {
     }
 }
 
-// 正在进行的棋局列表
-#[derive(Serialize, Deserialize)]
-struct GameList {
-    list: HashMap<i64, Game>,
-}
-
 #[handler(command = "/tictactoe")]
 pub async fn tictactoe_command_handler(
     context: &Context,
@@ -425,7 +419,7 @@ pub async fn tictactoe_inlinekeyboard_handler(
                 .execute(
                     answer_callback_query.unwrap_or(
                         AnswerCallbackQuery::new(&query.id)
-                            .text("找不到游戏")
+                            .text("游戏已结束")
                             .show_alert(true),
                     ),
                 )

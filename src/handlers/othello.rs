@@ -95,25 +95,42 @@ impl Error for ActionError {
     }
 }
 
+// 存储玩家信息
+#[derive(Clone, Serialize, Deserialize)]
+struct Player {
+    id: i64,
+    name: String,
+}
+
+// 转换 carapax::types::User 到 Player
+impl From<&User> for Player {
+    fn from(user: &User) -> Self {
+        Self {
+            id: user.id,
+            name: user.get_full_name(),
+        }
+    }
+}
+
 // 棋局
 #[derive(Clone, Serialize, Deserialize)]
 struct Game {
-    data: [[Piece; 8]; 8],
+    board: [[Piece; 8]; 8],
     turn: Piece,
-    player_black: Option<User>,
-    player_white: Option<User>,
+    player_black: Option<Player>,
+    player_white: Option<Player>,
 }
 
 impl Game {
     fn new() -> Self {
         Self {
-            data: {
-                let mut data = [[Piece::Empty; 8]; 8];
-                data[3][3] = Piece::Black;
-                data[3][4] = Piece::White;
-                data[4][3] = Piece::White;
-                data[4][4] = Piece::Black;
-                data
+            board: {
+                let mut board = [[Piece::Empty; 8]; 8];
+                board[3][3] = Piece::Black;
+                board[3][4] = Piece::White;
+                board[4][3] = Piece::White;
+                board[4][4] = Piece::Black;
+                board
             },
             turn: Piece::Black,
             player_black: None,
@@ -123,13 +140,13 @@ impl Game {
 
     // 获取指定位置的棋子类型
     fn get(&self, pos: PiecePosition) -> Piece {
-        self.data[pos.row][pos.col]
+        self.board[pos.row][pos.col]
     }
 
     // 设定指定位子的棋子，失败时返回 Err(ActionError::Unplaceable)
     fn set(&mut self, pos: PiecePosition, piece: Piece) -> Result<(), ActionError> {
         let mut is_changed = false;
-        if self.data[pos.row][pos.col] == Piece::Empty {
+        if self.board[pos.row][pos.col] == Piece::Empty {
             // 向上查找
             if pos.row > 1 && self.get(PiecePosition::from(pos.row - 1, pos.col)) == piece.reverse()
             {
@@ -138,11 +155,11 @@ impl Game {
                         break;
                     }
                     if self.get(PiecePosition::from(n, pos.col)) == piece {
-                        self.data[pos.row][pos.col] = piece;
+                        self.board[pos.row][pos.col] = piece;
                         let mut n_rev = n + 1;
                         loop {
                             if self.get(PiecePosition::from(n_rev, pos.col)) == piece.reverse() {
-                                self.data[n_rev][pos.col] = piece;
+                                self.board[n_rev][pos.col] = piece;
                                 n_rev += 1;
                             } else {
                                 break;
@@ -161,11 +178,11 @@ impl Game {
                         break;
                     }
                     if self.get(PiecePosition::from(n, pos.col)) == piece {
-                        self.data[pos.row][pos.col] = piece;
+                        self.board[pos.row][pos.col] = piece;
                         let mut n_rev = n - 1;
                         loop {
                             if self.get(PiecePosition::from(n_rev, pos.col)) == piece.reverse() {
-                                self.data[n_rev][pos.col] = piece;
+                                self.board[n_rev][pos.col] = piece;
                                 n_rev -= 1;
                             } else {
                                 break;
@@ -184,11 +201,11 @@ impl Game {
                         break;
                     }
                     if self.get(PiecePosition::from(pos.row, n)) == piece {
-                        self.data[pos.row][pos.col] = piece;
+                        self.board[pos.row][pos.col] = piece;
                         let mut n_rev = n + 1;
                         loop {
                             if self.get(PiecePosition::from(pos.row, n_rev)) == piece.reverse() {
-                                self.data[pos.row][n_rev] = piece;
+                                self.board[pos.row][n_rev] = piece;
                                 n_rev += 1;
                             } else {
                                 break;
@@ -207,11 +224,11 @@ impl Game {
                         break;
                     }
                     if self.get(PiecePosition::from(pos.row, n)) == piece {
-                        self.data[pos.row][pos.col] = piece;
+                        self.board[pos.row][pos.col] = piece;
                         let mut n_rev = n - 1;
                         loop {
                             if self.get(PiecePosition::from(pos.row, n_rev)) == piece.reverse() {
-                                self.data[pos.row][n_rev] = piece;
+                                self.board[pos.row][n_rev] = piece;
                                 n_rev -= 1;
                             } else {
                                 break;
@@ -234,13 +251,13 @@ impl Game {
                         break;
                     }
                     if self.get(PiecePosition::from(pos.row - n - 2, pos.col - n - 2)) == piece {
-                        self.data[pos.row][pos.col] = piece;
+                        self.board[pos.row][pos.col] = piece;
                         let mut n_rev = n + 1;
                         loop {
                             if self.get(PiecePosition::from(pos.row - n_rev, pos.col - n_rev))
                                 == piece.reverse()
                             {
-                                self.data[pos.row - n_rev][pos.col - n_rev] = piece;
+                                self.board[pos.row - n_rev][pos.col - n_rev] = piece;
                                 n_rev -= 1;
                             } else {
                                 break;
@@ -263,13 +280,13 @@ impl Game {
                         break;
                     }
                     if self.get(PiecePosition::from(pos.row - n - 2, pos.col + n + 2)) == piece {
-                        self.data[pos.row][pos.col] = piece;
+                        self.board[pos.row][pos.col] = piece;
                         let mut n_rev = n + 1;
                         loop {
                             if self.get(PiecePosition::from(pos.row - n_rev, pos.col + n_rev))
                                 == piece.reverse()
                             {
-                                self.data[pos.row - n_rev][pos.col + n_rev] = piece;
+                                self.board[pos.row - n_rev][pos.col + n_rev] = piece;
                                 n_rev -= 1;
                             } else {
                                 break;
@@ -292,13 +309,13 @@ impl Game {
                         break;
                     }
                     if self.get(PiecePosition::from(pos.row + n + 2, pos.col - n - 2)) == piece {
-                        self.data[pos.row][pos.col] = piece;
+                        self.board[pos.row][pos.col] = piece;
                         let mut n_rev = n + 1;
                         loop {
                             if self.get(PiecePosition::from(pos.row + n_rev, pos.col - n_rev))
                                 == piece.reverse()
                             {
-                                self.data[pos.row + n_rev][pos.col - n_rev] = piece;
+                                self.board[pos.row + n_rev][pos.col - n_rev] = piece;
                                 n_rev -= 1;
                             } else {
                                 break;
@@ -321,13 +338,13 @@ impl Game {
                         break;
                     }
                     if self.get(PiecePosition::from(pos.row + n + 2, pos.col + n + 2)) == piece {
-                        self.data[pos.row][pos.col] = piece;
+                        self.board[pos.row][pos.col] = piece;
                         let mut n_rev = n + 1;
                         loop {
                             if self.get(PiecePosition::from(pos.row + n_rev, pos.col + n_rev))
                                 == piece.reverse()
                             {
-                                self.data[pos.row + n_rev][pos.col + n_rev] = piece;
+                                self.board[pos.row + n_rev][pos.col + n_rev] = piece;
                                 n_rev -= 1;
                             } else {
                                 break;
@@ -478,13 +495,13 @@ impl Game {
     }
 
     // 尝试落子，成功时返回 Ok(棋局是否结束)，失败时返回 Err(ActionError)
-    fn try_put(&mut self, pos: PiecePosition, player: User) -> Result<bool, ActionError> {
+    fn try_put(&mut self, pos: PiecePosition, user: &User) -> Result<bool, ActionError> {
         // 轮到 Black 落子
         if let Piece::Black = self.turn {
             // 有玩家作为 Black
             if let Some(player_black) = &self.player_black {
                 // 验证落子发起者
-                if &player == player_black {
+                if user.id == player_black.id {
                     match self.set(pos, Piece::Black) {
                         Ok(_) => {
                             // 检查 White 是否可以落子
@@ -501,7 +518,7 @@ impl Game {
             } else {
                 match self.set(pos, Piece::Black) {
                     Ok(_) => {
-                        self.player_black = Some(player);
+                        self.player_black = Some(user.into());
                         self.next_turn();
                     }
                     Err(err) => return Err(err),
@@ -510,7 +527,7 @@ impl Game {
         // 轮到 White 落子
         } else {
             if let Some(player_white) = &self.player_white {
-                if &player == player_white {
+                if user.id == player_white.id {
                     match self.set(pos, Piece::White) {
                         Ok(_) => {
                             if self.is_able_to_put(Piece::Black) {
@@ -525,7 +542,7 @@ impl Game {
             } else {
                 match self.set(pos, Piece::White) {
                     Ok(_) => {
-                        self.player_white = Some(player);
+                        self.player_white = Some(user.into());
                         self.next_turn();
                     }
                     Err(err) => return Err(err),
@@ -565,10 +582,10 @@ impl Game {
         let mut players = String::new();
         if let Some(player_black) = &self.player_black {
             players.push_str("⚫：");
-            players += &player_black.first_name;
+            players += &player_black.name;
             if let Some(player_white) = &self.player_white {
                 players.push_str("\n⚪：");
-                players += &player_white.first_name;
+                players += &player_white.name;
             }
         }
         players
@@ -576,7 +593,22 @@ impl Game {
 
     // 获取下一位轮到的玩家
     fn get_next_player(&self) -> String {
-        self.turn.to_string()
+        match self.turn {
+            Piece::Black => {
+                if let Some(player) = &self.player_black {
+                    player.name.clone()
+                } else {
+                    Piece::Black.to_string()
+                }
+            }
+            _ => {
+                if let Some(player) = &self.player_white {
+                    player.name.clone()
+                } else {
+                    Piece::White.to_string()
+                }
+            }
+        }
     }
 
     // 获取棋局结果
@@ -593,8 +625,26 @@ impl Game {
             }
         }
         match black_count.cmp(&white_count) {
-            cmp::Ordering::Less => format!("⚫：{} ⚪：{}\n\n⚪ 赢了", black_count, white_count),
-            cmp::Ordering::Greater => format!("⚫：{} ⚪：{}\n\n⚫ 赢了", black_count, white_count),
+            cmp::Ordering::Less => format!(
+                "⚫：{} ⚪：{}\n\n{} 赢了",
+                black_count,
+                white_count,
+                if let Some(player) = &self.player_white {
+                    player.name.clone()
+                } else {
+                    Piece::White.to_string()
+                }
+            ),
+            cmp::Ordering::Greater => format!(
+                "⚫：{} ⚪：{}\n\n{} 赢了",
+                black_count,
+                white_count,
+                if let Some(player) = &self.player_black {
+                    player.name.clone()
+                } else {
+                    Piece::Black.to_string()
+                }
+            ),
             cmp::Ordering::Equal => {
                 format!("⚫：{} ⚪：{}\n\n平局", black_count, white_count)
             }
@@ -651,7 +701,7 @@ pub async fn othello_inlinekeyboard_handler(
                     let chat_id = message.get_chat_id();
                     let user = query.from;
                     // 尝试操作棋局
-                    match game.try_put(pos, user.clone()) {
+                    match game.try_put(pos, &user) {
                         // 操作成功
                         Ok(is_ended) => {
                             let edit_message_text;
