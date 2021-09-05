@@ -581,7 +581,6 @@ impl Game {
 
     // 获取棋局结果
     fn get_game_result(&self) -> String {
-        let mut board = String::new();
         let mut black_count: u8 = 0;
         let mut white_count: u8 = 0;
         for col in 0..8 {
@@ -591,21 +590,13 @@ impl Game {
                     Piece::White => white_count += 1,
                     _ => (),
                 }
-                board.push_str(&self.data[row][col].to_string());
             }
-            board.push_str("\n");
         }
         match black_count.cmp(&white_count) {
-            cmp::Ordering::Less => format!(
-                "{}\n⚫：{} ⚪：{}\n\n⚪ 赢了",
-                board, black_count, white_count
-            ),
-            cmp::Ordering::Greater => format!(
-                "{}\n⚫：{} ⚪：{}\n\n⚫ 赢了",
-                board, black_count, white_count
-            ),
+            cmp::Ordering::Less => format!("⚫：{} ⚪：{}\n\n⚪ 赢了", black_count, white_count),
+            cmp::Ordering::Greater => format!("⚫：{} ⚪：{}\n\n⚫ 赢了", black_count, white_count),
             cmp::Ordering::Equal => {
-                format!("{}\n⚫：{} ⚪：{}\n\n平局", board, black_count, white_count)
+                format!("⚫：{} ⚪：{}\n\n平局", black_count, white_count)
             }
         }
     }
@@ -674,7 +665,8 @@ pub async fn othello_inlinekeyboard_handler(
                                         game.get_players(),
                                         game.get_game_result()
                                     ),
-                                );
+                                )
+                                .reply_markup(game.get_inline_keyboard());
                                 // 删除棋局
                                 session
                                     .remove(format!("othello_{}", command_message.id))
@@ -690,7 +682,7 @@ pub async fn othello_inlinekeyboard_handler(
                                     ),
                                 )
                                 .reply_markup(game.get_inline_keyboard());
-                                // 存储游戏
+                                // 存储棋局
                                 session
                                     .set(format!("othello_{}", command_message.id), &game)
                                     .await?;
@@ -715,7 +707,7 @@ pub async fn othello_inlinekeyboard_handler(
                 .execute(
                     answer_callback_query.unwrap_or(
                         AnswerCallbackQuery::new(&query.id)
-                            .text("找不到游戏")
+                            .text("游戏已结束")
                             .show_alert(true),
                     ),
                 )
