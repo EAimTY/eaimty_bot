@@ -2,7 +2,6 @@ use crate::{context::Context, error::ErrorHandler};
 use carapax::{
     handler,
     methods::{AnswerCallbackQuery, EditMessageText, SendMessage},
-    session::SessionId,
     types::{
         CallbackQuery, Command, InlineKeyboardButton, InlineKeyboardButtonKind,
         InlineKeyboardMarkup, ReplyMarkup, User,
@@ -10,7 +9,7 @@ use carapax::{
     HandlerResult,
 };
 use serde::{Deserialize, Serialize};
-use std::{cmp, collections::HashMap, error::Error, fmt};
+use std::{cmp, error::Error, fmt};
 
 // 棋子类型
 #[derive(Copy, Clone, PartialEq, Serialize, Deserialize)]
@@ -612,34 +611,6 @@ impl Game {
     }
 }
 
-// 正在进行的棋局列表
-#[derive(Serialize, Deserialize)]
-struct GameList {
-    list: HashMap<i64, Game>,
-}
-
-impl GameList {
-    fn new() -> Self {
-        Self {
-            list: HashMap::new(),
-        }
-    }
-
-    fn get(&mut self, id: i64) -> Game {
-        self.list.entry(id).or_insert(Game::new()).clone()
-    }
-
-    fn update_and_check_empty(&mut self, id: i64, game: Option<Game>) -> bool {
-        if let Some(game) = game {
-            self.list.insert(id, game);
-            false
-        } else {
-            self.list.remove(&id);
-            self.list.is_empty()
-        }
-    }
-}
-
 #[handler(command = "/othello")]
 pub async fn othello_command_handler(
     context: &Context,
@@ -647,9 +618,19 @@ pub async fn othello_command_handler(
 ) -> Result<HandlerResult, ErrorHandler> {
     let message = command.get_message();
     let chat_id = message.get_chat_id();
-    let method = SendMessage::new(chat_id, "黑白棋").reply_markup(
-        ReplyMarkup::InlineKeyboardMarkup(Game::new().get_inline_keyboard()),
-    );
+    // 创建新游戏
+    let game = Game::new();
+    // 向 session 存储游戏
+    let mut session = context.session_manager.get_session(message)?;
+    session
+        .set(format!("othello_{}", message.id), &game)
+        .await?;
+    // 发送游戏地图
+    let method = SendMessage::new(chat_id, "黑白棋")
+        .reply_markup(ReplyMarkup::InlineKeyboardMarkup(
+            game.get_inline_keyboard(),
+        ))
+        .reply_to_message_id(message.id);
     context.api.execute(method).await?;
     Ok(HandlerResult::Stop)
 }
@@ -664,65 +645,81 @@ pub async fn othello_inlinekeyboard_handler(
         // 尝试 parse callback data
         if let Some(pos) = PiecePosition::try_parse_callback(data) {
             let message = query.message.unwrap();
-            let chat_id = message.get_chat_id();
-            let message_id = message.id;
-            let user = query.from;
-            // 从 session 获取棋局
-            let mut session = context
-                .session_manager
-                .get_session(SessionId::new(chat_id, 0))?;
-            let mut game_list = session.get("othello").await?.unwrap_or(GameList::new());
-            let mut game = game_list.get(message_id);
-            // 尝试操作棋局
-            match game.try_put(pos, user.clone()) {
-                // 操作成功
-                Ok(is_ended) => {
-                    let method: EditMessageText;
-                    // 棋局是否结束
-                    if is_ended {
-                        method = EditMessageText::new(
-                            chat_id,
-                            message_id,
-                            format!(
-                                "黑白棋\n\n{}\n\n{}",
-                                game.get_players(),
-                                game.get_game_result()
-                            ),
-                        );
-                        // 清理棋局列表
-                        if game_list.update_and_check_empty(message_id, None) {
-                            session.remove("othello").await?;
-                        } else {
-                            session.set("othello", &game_list).await?;
+            // 用于回应 Callback Query 的信息
+            let mut answer_callback_query = None;
+            // 尝试获取触发游戏的原命令消息
+            if let Some(command_message) = &message.reply_to {
+                // 尝试从 session 获取游戏
+                let mut session = context
+                    .session_manager
+                    .get_session(command_message.as_ref())?;
+                let game: Option<Game> = session
+                    .get(format!("othello_{}", command_message.id))
+                    .await?;
+                if let Some(mut game) = game {
+                    let chat_id = message.get_chat_id();
+                    let user = query.from;
+                    // 尝试操作棋局
+                    match game.try_put(pos, user.clone()) {
+                        // 操作成功
+                        Ok(is_ended) => {
+                            let edit_message_text;
+                            // 棋局是否结束
+                            if is_ended {
+                                edit_message_text = EditMessageText::new(
+                                    chat_id,
+                                    message.id,
+                                    format!(
+                                        "黑白棋\n\n{}\n\n{}",
+                                        game.get_players(),
+                                        game.get_game_result()
+                                    ),
+                                );
+                                // 删除棋局
+                                session
+                                    .remove(format!("othello_{}", command_message.id))
+                                    .await?;
+                            } else {
+                                edit_message_text = EditMessageText::new(
+                                    chat_id,
+                                    message.id,
+                                    format!(
+                                        "黑白棋\n\n{}\n\n轮到：{}",
+                                        game.get_players(),
+                                        game.get_next_player()
+                                    ),
+                                )
+                                .reply_markup(game.get_inline_keyboard());
+                                // 存储游戏
+                                session
+                                    .set(format!("othello_{}", command_message.id), &game)
+                                    .await?;
+                            }
+                            context.api.execute(edit_message_text).await?;
+                            answer_callback_query = Some(AnswerCallbackQuery::new(&query.id));
                         }
-                    } else {
-                        method = EditMessageText::new(
-                            chat_id,
-                            message_id,
-                            format!(
-                                "黑白棋\n\n{}\n\n轮到：{}",
-                                game.get_players(),
-                                game.get_next_player()
-                            ),
-                        )
-                        .reply_markup(game.get_inline_keyboard());
-                        // 存储棋局
-                        game_list.update_and_check_empty(message_id, Some(game.clone()));
-                        session.set("othello", &game_list).await?;
+                        // 操作失败
+                        Err(err) => {
+                            answer_callback_query = Some(
+                                AnswerCallbackQuery::new(&query.id)
+                                    .text(err.to_string())
+                                    .show_alert(true),
+                            );
+                        }
                     }
-                    context.api.execute(method).await?;
-                    // 回应 callback
-                    let method = AnswerCallbackQuery::new(query.id);
-                    context.api.execute(method).await?;
-                }
-                // 操作失败
-                Err(err) => {
-                    let method = AnswerCallbackQuery::new(query.id)
-                        .text(err.to_string())
-                        .show_alert(true);
-                    context.api.execute(method).await?;
                 }
             }
+            // 回应 callback
+            context
+                .api
+                .execute(
+                    answer_callback_query.unwrap_or(
+                        AnswerCallbackQuery::new(&query.id)
+                            .text("找不到游戏")
+                            .show_alert(true),
+                    ),
+                )
+                .await?;
             return Ok(HandlerResult::Stop);
         }
     }
