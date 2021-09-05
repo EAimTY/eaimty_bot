@@ -2,7 +2,6 @@ use crate::{context::Context, error::ErrorHandler};
 use carapax::{
     handler,
     methods::{AnswerCallbackQuery, EditMessageText, SendMessage},
-    session::SessionId,
     types::{
         CallbackQuery, Command, InlineKeyboardButton, InlineKeyboardButtonKind,
         InlineKeyboardMarkup, ReplyMarkup, User,
@@ -283,28 +282,6 @@ struct GameList {
     list: HashMap<i64, Game>,
 }
 
-impl GameList {
-    fn new() -> Self {
-        Self {
-            list: HashMap::new(),
-        }
-    }
-
-    fn get(&mut self, id: i64) -> Game {
-        self.list.entry(id).or_insert(Game::new()).clone()
-    }
-
-    fn update_and_check_empty(&mut self, id: i64, game: Option<Game>) -> bool {
-        if let Some(game) = game {
-            self.list.insert(id, game);
-            false
-        } else {
-            self.list.remove(&id);
-            self.list.is_empty()
-        }
-    }
-}
-
 #[handler(command = "/tictactoe")]
 pub async fn tictactoe_command_handler(
     context: &Context,
@@ -312,9 +289,19 @@ pub async fn tictactoe_command_handler(
 ) -> Result<HandlerResult, ErrorHandler> {
     let message = command.get_message();
     let chat_id = message.get_chat_id();
-    let method = SendMessage::new(chat_id, "Tic-Tac-Toe").reply_markup(
-        ReplyMarkup::InlineKeyboardMarkup(Game::new().get_inline_keyboard()),
-    );
+    // 创建新游戏
+    let game = Game::new();
+    // 向 session 存储游戏
+    let mut session = context.session_manager.get_session(message)?;
+    session
+        .set(format!("tictactoe_{}", message.id), &game)
+        .await?;
+    // 发送游戏地图
+    let method = SendMessage::new(chat_id, "Tic-Tac-Toe")
+        .reply_markup(ReplyMarkup::InlineKeyboardMarkup(
+            game.get_inline_keyboard(),
+        ))
+        .reply_to_message_id(message.id);
     context.api.execute(method).await?;
     Ok(HandlerResult::Stop)
 }
@@ -329,90 +316,103 @@ pub async fn tictactoe_inlinekeyboard_handler(
         // 尝试 parse callback data
         if let Some(pos) = PiecePosition::try_parse_callback(data) {
             let message = query.message.unwrap();
-            let chat_id = message.get_chat_id();
-            let message_id = message.id;
-            let user = query.from;
-            // 从 session 获取棋局
-            let mut session = context
-                .session_manager
-                .get_session(SessionId::new(chat_id, 0))?;
-            let mut game_list = session.get("tictactoe").await?.unwrap_or(GameList::new());
-            let mut game = game_list.get(message_id);
-            // 尝试操作棋局
-            match game.try_put(pos, user.clone()) {
-                // 操作成功
-                Ok(game_state) => {
-                    let method: EditMessageText;
-                    // 匹配棋局状态
-                    match game_state {
-                        // 棋局正在进行
-                        GameState::OnGoing => {
-                            method = EditMessageText::new(
-                                chat_id,
-                                message_id,
-                                format!(
-                                    "Tic-Tac-Toe\n\n{}\n\n轮到：{}",
-                                    game.get_players(),
-                                    game.get_next_player()
-                                ),
-                            )
-                            .reply_markup(game.get_inline_keyboard());
-                            // 存储棋局
-                            game_list.update_and_check_empty(message_id, Some(game.clone()));
-                            session.set("tictactoe", &game_list).await?;
-                        }
-                        // 平局
-                        GameState::Tie => {
-                            method = EditMessageText::new(
-                                chat_id,
-                                message_id,
-                                format!(
-                                    "Tic-Tac-Toe\n\n{}\n{}平局",
-                                    game.get_players(),
-                                    game.get_game_board()
-                                ),
-                            );
-                            // 清理棋局列表
-                            if game_list.update_and_check_empty(message_id, None) {
-                                session.remove("tictactoe").await?;
-                            } else {
-                                session.set("tictactoe", &game_list).await?;
+            // 用于回应 Callback Query 的信息
+            let mut answer_callback_query = None;
+            // 尝试获取触发游戏的原命令消息
+            if let Some(command_message) = &message.reply_to {
+                // 尝试从 session 获取游戏
+                let mut session = context
+                    .session_manager
+                    .get_session(command_message.as_ref())?;
+                let game: Option<Game> = session
+                    .get(format!("tictactoe_{}", command_message.id))
+                    .await?;
+                if let Some(mut game) = game {
+                    let chat_id = message.get_chat_id();
+                    let user = query.from;
+                    // 尝试操作棋局
+                    match game.try_put(pos, user.clone()) {
+                        // 操作成功
+                        Ok(game_state) => {
+                            let edit_message_text;
+                            // 匹配棋局状态
+                            match game_state {
+                                // 棋局正在进行
+                                GameState::OnGoing => {
+                                    edit_message_text = EditMessageText::new(
+                                        chat_id,
+                                        message.id,
+                                        format!(
+                                            "Tic-Tac-Toe\n\n{}\n\n轮到：{}",
+                                            game.get_players(),
+                                            game.get_next_player()
+                                        ),
+                                    )
+                                    .reply_markup(game.get_inline_keyboard());
+                                    // 存储游戏
+                                    session
+                                        .set(format!("tictactoe_{}", command_message.id), &game)
+                                        .await?;
+                                }
+                                // 平局
+                                GameState::Tie => {
+                                    edit_message_text = EditMessageText::new(
+                                        chat_id,
+                                        message.id,
+                                        format!(
+                                            "Tic-Tac-Toe\n\n{}\n{}平局",
+                                            game.get_players(),
+                                            game.get_game_board()
+                                        ),
+                                    );
+                                    // 清理游戏列表
+                                    session
+                                        .remove(format!("tictactoe_{}", command_message.id))
+                                        .await?;
+                                }
+                                // 玩家获胜
+                                GameState::Win => {
+                                    edit_message_text = EditMessageText::new(
+                                        chat_id,
+                                        message.id,
+                                        format!(
+                                            "Tic-Tac-Toe\n\n{}\n\n{}\n{} 赢了",
+                                            game.get_players(),
+                                            game.get_game_board(),
+                                            user.first_name
+                                        ),
+                                    );
+                                    // 清理游戏列表
+                                    session
+                                        .remove(format!("tictactoe_{}", command_message.id))
+                                        .await?;
+                                }
                             }
+                            context.api.execute(edit_message_text).await?;
+                            answer_callback_query = Some(AnswerCallbackQuery::new(&query.id));
                         }
-                        // 玩家获胜
-                        GameState::Win => {
-                            method = EditMessageText::new(
-                                chat_id,
-                                message_id,
-                                format!(
-                                    "Tic-Tac-Toe\n\n{}\n\n{}\n{} 赢了",
-                                    game.get_players(),
-                                    game.get_game_board(),
-                                    user.first_name
-                                ),
+                        // 操作失败
+                        Err(err) => {
+                            answer_callback_query = Some(
+                                AnswerCallbackQuery::new(&query.id)
+                                    .text(err.to_string())
+                                    .show_alert(true),
                             );
-                            // 清理棋局列表
-                            if game_list.update_and_check_empty(message_id, None) {
-                                session.remove("tictactoe").await?;
-                            } else {
-                                session.set("tictactoe", &game_list).await?;
-                            }
                         }
                     }
-                    context.api.execute(method).await?;
-                    // 回应 callback
-                    let method = AnswerCallbackQuery::new(query.id);
-                    context.api.execute(method).await?;
-                }
-                // 操作失败
-                Err(err) => {
-                    // 以错误提示回应 callback
-                    let method = AnswerCallbackQuery::new(query.id)
-                        .text(err.to_string())
-                        .show_alert(true);
-                    context.api.execute(method).await?;
                 }
             }
+            // 回应 callback
+            context
+                .api
+                .execute(
+                    answer_callback_query.unwrap_or(
+                        AnswerCallbackQuery::new(&query.id)
+                            .text("找不到游戏")
+                            .show_alert(true),
+                    ),
+                )
+                .await?;
             return Ok(HandlerResult::Stop);
         }
     }
