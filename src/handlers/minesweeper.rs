@@ -450,8 +450,10 @@ impl Game {
                         // 周围 Masked 块数等于该块周围的地雷数时，将周围 Masked 块标记
                         if masked_count + flagged_count == mine_count {
                             // 操作用户点击数 + 1
-                            let player_click_count = self.players.entry(player).or_insert(0);
-                            *player_click_count += 1;
+                            if masked_count > 0 {
+                                let player_click_count = self.players.entry(player).or_insert(0);
+                                *player_click_count += 1;
+                            }
                             // 标记周围 Masked 块
                             for around_pos in BoxesAround::from(&pos, (self.width, self.height)) {
                                 if let MaskType::Masked = self.map[&around_pos].get_mask_type() {
@@ -461,8 +463,10 @@ impl Game {
                         // 周围 Flagged 块数等于该块周围的地雷数时，将周围 Masked 块 Unmask
                         } else if flagged_count == mine_count {
                             // 操作用户点击数 + 1
-                            let player_click_count = self.players.entry(player).or_insert(0);
-                            *player_click_count += 1;
+                            if masked_count > 0 {
+                                let player_click_count = self.players.entry(player).or_insert(0);
+                                *player_click_count += 1;
+                            }
                             // Unmask 周围 Masked 块
                             for around_pos in BoxesAround::from(&pos, (self.width, self.height)) {
                                 let mut mine_box = self.map[&around_pos];
@@ -623,13 +627,13 @@ pub async fn minesweeper_inlinekeyboard_handler(
                             }
                         }
                         context.api.execute(method).await?;
-                        // 回应 callback
-                        let method = AnswerCallbackQuery::new(query.id);
-                        context.api.execute(method).await?;
-                        return Ok(HandlerResult::Stop);
                     }
                 }
             }
+            // 回应 callback
+            let method = AnswerCallbackQuery::new(query.id);
+            context.api.execute(method).await?;
+            return Ok(HandlerResult::Stop);
         }
     }
     Ok(HandlerResult::Continue)
