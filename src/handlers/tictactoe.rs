@@ -262,18 +262,6 @@ impl Game {
     fn get_next_player(&self) -> String {
         self.turn.to_string()
     }
-
-    // 获取棋盘
-    fn get_game_board(&self) -> String {
-        let mut board = String::new();
-        for col in 0..3 {
-            for row in 0..3 {
-                board.push_str(&self.data[row][col].to_string());
-            }
-            board.push_str("\n");
-        }
-        board
-    }
 }
 
 // 正在进行的棋局列表
@@ -349,7 +337,7 @@ pub async fn tictactoe_inlinekeyboard_handler(
                                         ),
                                     )
                                     .reply_markup(game.get_inline_keyboard());
-                                    // 存储游戏
+                                    // 存储棋局
                                     session
                                         .set(format!("tictactoe_{}", command_message.id), &game)
                                         .await?;
@@ -359,13 +347,10 @@ pub async fn tictactoe_inlinekeyboard_handler(
                                     edit_message_text = EditMessageText::new(
                                         chat_id,
                                         message.id,
-                                        format!(
-                                            "Tic-Tac-Toe\n\n{}\n{}平局",
-                                            game.get_players(),
-                                            game.get_game_board()
-                                        ),
-                                    );
-                                    // 清理游戏列表
+                                        format!("Tic-Tac-Toe\n\n{}\n平局", game.get_players()),
+                                    )
+                                    .reply_markup(game.get_inline_keyboard());
+                                    // 删除棋局
                                     session
                                         .remove(format!("tictactoe_{}", command_message.id))
                                         .await?;
@@ -376,13 +361,13 @@ pub async fn tictactoe_inlinekeyboard_handler(
                                         chat_id,
                                         message.id,
                                         format!(
-                                            "Tic-Tac-Toe\n\n{}\n\n{}\n{} 赢了",
+                                            "Tic-Tac-Toe\n\n{}\n{} 赢了",
                                             game.get_players(),
-                                            game.get_game_board(),
-                                            user.first_name
+                                            user.get_full_name()
                                         ),
-                                    );
-                                    // 清理游戏列表
+                                    )
+                                    .reply_markup(game.get_inline_keyboard());
+                                    // 删除棋局
                                     session
                                         .remove(format!("tictactoe_{}", command_message.id))
                                         .await?;
