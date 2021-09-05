@@ -86,6 +86,7 @@ async fn run(token: String, proxy: Option<String>, webhook_port: Option<String>)
         session_manager: SessionManager::new(backend),
         tmpdir: tmpdir,
     });
+    dispatcher.add_handler(handlers::access::group_message_filter);
     dispatcher.add_handler(handlers::about::about_command_handler);
     dispatcher.add_handler(handlers::agree::agree_keyword_handler);
     dispatcher.add_handler(handlers::dart::dart_command_handler);
