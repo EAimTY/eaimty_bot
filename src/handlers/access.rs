@@ -1,15 +1,20 @@
 use crate::{context::Context, error::ErrorHandler};
-use carapax::{HandlerResult, handler, methods::{GetChat, GetMe}, types::{Chat, Message}};
+use carapax::{
+    handler,
+    methods::GetMe,
+    types::{Message, MessageKind},
+    HandlerResult,
+};
 
 #[handler]
 pub async fn group_message_filter(
     context: &Context,
     message: Message,
 ) -> Result<HandlerResult, ErrorHandler> {
-    // 获取信息所属 chat
-    let chat = context.api.execute(GetChat::new(message.get_chat_id())).await?;
     // 只处理群组内消息
-    if matches!(chat, Chat::Group(_)) || matches!(chat, Chat::Supergroup(_)) {
+    if matches!(message.kind, MessageKind::Group { .. })
+        || matches!(message.kind, MessageKind::Supergroup { .. })
+    {
         // 若 bot_info 为空，尝试获取并存储
         if let None = *context.bot_info.username.read().await {
             let bot = context.api.execute(GetMe).await?;
