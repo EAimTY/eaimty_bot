@@ -1,4 +1,3 @@
-use crate::context::Context;
 use carapax::{
     longpoll::LongPoll,
     session::{backend::fs::FilesystemBackend, SessionCollector, SessionManager},
@@ -7,7 +6,7 @@ use carapax::{
 use getopts::Options;
 use std::{env, time::Duration};
 use tempfile::tempdir;
-use tokio::spawn;
+use tokio::sync::RwLock;
 
 mod context;
 mod error;
@@ -80,12 +79,17 @@ async fn run(token: String, proxy: Option<String>, webhook_port: Option<String>)
     let gc_period = Duration::from_secs(3);
     let session_lifetime = Duration::from_secs(86400);
     let mut collector = SessionCollector::new(backend.clone(), gc_period, session_lifetime);
-    spawn(async move { collector.run().await });
-    let mut dispatcher = Dispatcher::new(Context {
+    tokio::spawn(async move { collector.run().await });
+    let mut dispatcher = Dispatcher::new(context::Context {
         api: api.clone(),
         session_manager: SessionManager::new(backend),
-        tmpdir: tmpdir,
+        tmpdir,
+        bot_info: context::BotInfo {
+            id: RwLock::new(None),
+            username: RwLock::new(None),
+        },
     });
+    dispatcher.add_handler(handlers::access::group_message_filter);
     dispatcher.add_handler(handlers::about::about_command_handler);
     dispatcher.add_handler(handlers::agree::agree_keyword_handler);
     dispatcher.add_handler(handlers::dart::dart_command_handler);

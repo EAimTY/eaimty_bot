@@ -2,7 +2,6 @@ use crate::{context::Context, error::ErrorHandler};
 use carapax::{
     handler,
     methods::{AnswerCallbackQuery, EditMessageText, SendMessage},
-    session::SessionId,
     types::{
         CallbackQuery, Command, InlineKeyboardButton, InlineKeyboardButtonKind,
         InlineKeyboardMarkup, ReplyMarkup, User,
@@ -10,7 +9,7 @@ use carapax::{
     HandlerResult,
 };
 use serde::{Deserialize, Serialize};
-use std::{cmp, collections::HashMap, error::Error, fmt};
+use std::{cmp, error::Error, fmt};
 
 // 棋子类型
 #[derive(Copy, Clone, PartialEq, Serialize, Deserialize)]
@@ -96,25 +95,42 @@ impl Error for ActionError {
     }
 }
 
+// 存储玩家信息
+#[derive(Clone, Serialize, Deserialize)]
+struct Player {
+    id: i64,
+    name: String,
+}
+
+// 转换 carapax::types::User 到 Player
+impl From<&User> for Player {
+    fn from(user: &User) -> Self {
+        Self {
+            id: user.id,
+            name: user.get_full_name(),
+        }
+    }
+}
+
 // 棋局
 #[derive(Clone, Serialize, Deserialize)]
 struct Game {
-    data: [[Piece; 8]; 8],
+    board: [[Piece; 8]; 8],
     turn: Piece,
-    player_black: Option<User>,
-    player_white: Option<User>,
+    player_black: Option<Player>,
+    player_white: Option<Player>,
 }
 
 impl Game {
     fn new() -> Self {
         Self {
-            data: {
-                let mut data = [[Piece::Empty; 8]; 8];
-                data[3][3] = Piece::Black;
-                data[3][4] = Piece::White;
-                data[4][3] = Piece::White;
-                data[4][4] = Piece::Black;
-                data
+            board: {
+                let mut board = [[Piece::Empty; 8]; 8];
+                board[3][3] = Piece::Black;
+                board[3][4] = Piece::White;
+                board[4][3] = Piece::White;
+                board[4][4] = Piece::Black;
+                board
             },
             turn: Piece::Black,
             player_black: None,
@@ -124,13 +140,13 @@ impl Game {
 
     // 获取指定位置的棋子类型
     fn get(&self, pos: PiecePosition) -> Piece {
-        self.data[pos.row][pos.col]
+        self.board[pos.row][pos.col]
     }
 
     // 设定指定位子的棋子，失败时返回 Err(ActionError::Unplaceable)
     fn set(&mut self, pos: PiecePosition, piece: Piece) -> Result<(), ActionError> {
         let mut is_changed = false;
-        if self.data[pos.row][pos.col] == Piece::Empty {
+        if self.board[pos.row][pos.col] == Piece::Empty {
             // 向上查找
             if pos.row > 1 && self.get(PiecePosition::from(pos.row - 1, pos.col)) == piece.reverse()
             {
@@ -139,11 +155,11 @@ impl Game {
                         break;
                     }
                     if self.get(PiecePosition::from(n, pos.col)) == piece {
-                        self.data[pos.row][pos.col] = piece;
+                        self.board[pos.row][pos.col] = piece;
                         let mut n_rev = n + 1;
                         loop {
                             if self.get(PiecePosition::from(n_rev, pos.col)) == piece.reverse() {
-                                self.data[n_rev][pos.col] = piece;
+                                self.board[n_rev][pos.col] = piece;
                                 n_rev += 1;
                             } else {
                                 break;
@@ -162,11 +178,11 @@ impl Game {
                         break;
                     }
                     if self.get(PiecePosition::from(n, pos.col)) == piece {
-                        self.data[pos.row][pos.col] = piece;
+                        self.board[pos.row][pos.col] = piece;
                         let mut n_rev = n - 1;
                         loop {
                             if self.get(PiecePosition::from(n_rev, pos.col)) == piece.reverse() {
-                                self.data[n_rev][pos.col] = piece;
+                                self.board[n_rev][pos.col] = piece;
                                 n_rev -= 1;
                             } else {
                                 break;
@@ -185,11 +201,11 @@ impl Game {
                         break;
                     }
                     if self.get(PiecePosition::from(pos.row, n)) == piece {
-                        self.data[pos.row][pos.col] = piece;
+                        self.board[pos.row][pos.col] = piece;
                         let mut n_rev = n + 1;
                         loop {
                             if self.get(PiecePosition::from(pos.row, n_rev)) == piece.reverse() {
-                                self.data[pos.row][n_rev] = piece;
+                                self.board[pos.row][n_rev] = piece;
                                 n_rev += 1;
                             } else {
                                 break;
@@ -208,11 +224,11 @@ impl Game {
                         break;
                     }
                     if self.get(PiecePosition::from(pos.row, n)) == piece {
-                        self.data[pos.row][pos.col] = piece;
+                        self.board[pos.row][pos.col] = piece;
                         let mut n_rev = n - 1;
                         loop {
                             if self.get(PiecePosition::from(pos.row, n_rev)) == piece.reverse() {
-                                self.data[pos.row][n_rev] = piece;
+                                self.board[pos.row][n_rev] = piece;
                                 n_rev -= 1;
                             } else {
                                 break;
@@ -235,13 +251,13 @@ impl Game {
                         break;
                     }
                     if self.get(PiecePosition::from(pos.row - n - 2, pos.col - n - 2)) == piece {
-                        self.data[pos.row][pos.col] = piece;
+                        self.board[pos.row][pos.col] = piece;
                         let mut n_rev = n + 1;
                         loop {
                             if self.get(PiecePosition::from(pos.row - n_rev, pos.col - n_rev))
                                 == piece.reverse()
                             {
-                                self.data[pos.row - n_rev][pos.col - n_rev] = piece;
+                                self.board[pos.row - n_rev][pos.col - n_rev] = piece;
                                 n_rev -= 1;
                             } else {
                                 break;
@@ -264,13 +280,13 @@ impl Game {
                         break;
                     }
                     if self.get(PiecePosition::from(pos.row - n - 2, pos.col + n + 2)) == piece {
-                        self.data[pos.row][pos.col] = piece;
+                        self.board[pos.row][pos.col] = piece;
                         let mut n_rev = n + 1;
                         loop {
                             if self.get(PiecePosition::from(pos.row - n_rev, pos.col + n_rev))
                                 == piece.reverse()
                             {
-                                self.data[pos.row - n_rev][pos.col + n_rev] = piece;
+                                self.board[pos.row - n_rev][pos.col + n_rev] = piece;
                                 n_rev -= 1;
                             } else {
                                 break;
@@ -293,13 +309,13 @@ impl Game {
                         break;
                     }
                     if self.get(PiecePosition::from(pos.row + n + 2, pos.col - n - 2)) == piece {
-                        self.data[pos.row][pos.col] = piece;
+                        self.board[pos.row][pos.col] = piece;
                         let mut n_rev = n + 1;
                         loop {
                             if self.get(PiecePosition::from(pos.row + n_rev, pos.col - n_rev))
                                 == piece.reverse()
                             {
-                                self.data[pos.row + n_rev][pos.col - n_rev] = piece;
+                                self.board[pos.row + n_rev][pos.col - n_rev] = piece;
                                 n_rev -= 1;
                             } else {
                                 break;
@@ -322,13 +338,13 @@ impl Game {
                         break;
                     }
                     if self.get(PiecePosition::from(pos.row + n + 2, pos.col + n + 2)) == piece {
-                        self.data[pos.row][pos.col] = piece;
+                        self.board[pos.row][pos.col] = piece;
                         let mut n_rev = n + 1;
                         loop {
                             if self.get(PiecePosition::from(pos.row + n_rev, pos.col + n_rev))
                                 == piece.reverse()
                             {
-                                self.data[pos.row + n_rev][pos.col + n_rev] = piece;
+                                self.board[pos.row + n_rev][pos.col + n_rev] = piece;
                                 n_rev -= 1;
                             } else {
                                 break;
@@ -479,13 +495,13 @@ impl Game {
     }
 
     // 尝试落子，成功时返回 Ok(棋局是否结束)，失败时返回 Err(ActionError)
-    fn try_put(&mut self, pos: PiecePosition, player: User) -> Result<bool, ActionError> {
+    fn try_put(&mut self, pos: PiecePosition, user: &User) -> Result<bool, ActionError> {
         // 轮到 Black 落子
         if let Piece::Black = self.turn {
             // 有玩家作为 Black
             if let Some(player_black) = &self.player_black {
                 // 验证落子发起者
-                if &player == player_black {
+                if user.id == player_black.id {
                     match self.set(pos, Piece::Black) {
                         Ok(_) => {
                             // 检查 White 是否可以落子
@@ -502,7 +518,7 @@ impl Game {
             } else {
                 match self.set(pos, Piece::Black) {
                     Ok(_) => {
-                        self.player_black = Some(player);
+                        self.player_black = Some(user.into());
                         self.next_turn();
                     }
                     Err(err) => return Err(err),
@@ -511,7 +527,7 @@ impl Game {
         // 轮到 White 落子
         } else {
             if let Some(player_white) = &self.player_white {
-                if &player == player_white {
+                if user.id == player_white.id {
                     match self.set(pos, Piece::White) {
                         Ok(_) => {
                             if self.is_able_to_put(Piece::Black) {
@@ -526,7 +542,7 @@ impl Game {
             } else {
                 match self.set(pos, Piece::White) {
                     Ok(_) => {
-                        self.player_white = Some(player);
+                        self.player_white = Some(user.into());
                         self.next_turn();
                     }
                     Err(err) => return Err(err),
@@ -566,10 +582,10 @@ impl Game {
         let mut players = String::new();
         if let Some(player_black) = &self.player_black {
             players.push_str("⚫：");
-            players += &player_black.first_name;
+            players += &player_black.name;
             if let Some(player_white) = &self.player_white {
                 players.push_str("\n⚪：");
-                players += &player_white.first_name;
+                players += &player_white.name;
             }
         }
         players
@@ -577,12 +593,26 @@ impl Game {
 
     // 获取下一位轮到的玩家
     fn get_next_player(&self) -> String {
-        self.turn.to_string()
+        match self.turn {
+            Piece::Black => {
+                if let Some(player) = &self.player_black {
+                    player.name.clone()
+                } else {
+                    Piece::Black.to_string()
+                }
+            }
+            _ => {
+                if let Some(player) = &self.player_white {
+                    player.name.clone()
+                } else {
+                    Piece::White.to_string()
+                }
+            }
+        }
     }
 
     // 获取棋局结果
     fn get_game_result(&self) -> String {
-        let mut board = String::new();
         let mut black_count: u8 = 0;
         let mut white_count: u8 = 0;
         for col in 0..8 {
@@ -592,50 +622,32 @@ impl Game {
                     Piece::White => white_count += 1,
                     _ => (),
                 }
-                board.push_str(&self.data[row][col].to_string());
             }
-            board.push_str("\n");
         }
         match black_count.cmp(&white_count) {
             cmp::Ordering::Less => format!(
-                "{}\n⚫：{} ⚪：{}\n\n⚪ 赢了",
-                board, black_count, white_count
+                "⚫：{} ⚪：{}\n\n{} 赢了",
+                black_count,
+                white_count,
+                if let Some(player) = &self.player_white {
+                    player.name.clone()
+                } else {
+                    Piece::White.to_string()
+                }
             ),
             cmp::Ordering::Greater => format!(
-                "{}\n⚫：{} ⚪：{}\n\n⚫ 赢了",
-                board, black_count, white_count
+                "⚫：{} ⚪：{}\n\n{} 赢了",
+                black_count,
+                white_count,
+                if let Some(player) = &self.player_black {
+                    player.name.clone()
+                } else {
+                    Piece::Black.to_string()
+                }
             ),
             cmp::Ordering::Equal => {
-                format!("{}\n⚫：{} ⚪：{}\n\n平局", board, black_count, white_count)
+                format!("⚫：{} ⚪：{}\n\n平局", black_count, white_count)
             }
-        }
-    }
-}
-
-// 正在进行的棋局列表
-#[derive(Serialize, Deserialize)]
-struct GameList {
-    list: HashMap<i64, Game>,
-}
-
-impl GameList {
-    fn new() -> Self {
-        Self {
-            list: HashMap::new(),
-        }
-    }
-
-    fn get(&mut self, id: i64) -> Game {
-        self.list.entry(id).or_insert(Game::new()).clone()
-    }
-
-    fn update_and_check_empty(&mut self, id: i64, game: Option<Game>) -> bool {
-        if let Some(game) = game {
-            self.list.insert(id, game);
-            false
-        } else {
-            self.list.remove(&id);
-            self.list.is_empty()
         }
     }
 }
@@ -647,9 +659,19 @@ pub async fn othello_command_handler(
 ) -> Result<HandlerResult, ErrorHandler> {
     let message = command.get_message();
     let chat_id = message.get_chat_id();
-    let method = SendMessage::new(chat_id, "黑白棋").reply_markup(
-        ReplyMarkup::InlineKeyboardMarkup(Game::new().get_inline_keyboard()),
-    );
+    // 创建新游戏
+    let game = Game::new();
+    // 向 session 存储游戏
+    let mut session = context.session_manager.get_session(message)?;
+    session
+        .set(format!("othello_{}", message.id), &game)
+        .await?;
+    // 发送游戏地图
+    let method = SendMessage::new(chat_id, "黑白棋")
+        .reply_markup(ReplyMarkup::InlineKeyboardMarkup(
+            game.get_inline_keyboard(),
+        ))
+        .reply_to_message_id(message.id);
     context.api.execute(method).await?;
     Ok(HandlerResult::Stop)
 }
@@ -664,65 +686,82 @@ pub async fn othello_inlinekeyboard_handler(
         // 尝试 parse callback data
         if let Some(pos) = PiecePosition::try_parse_callback(data) {
             let message = query.message.unwrap();
-            let chat_id = message.get_chat_id();
-            let message_id = message.id;
-            let user = query.from;
-            // 从 session 获取棋局
-            let mut session = context
-                .session_manager
-                .get_session(SessionId::new(chat_id, 0))?;
-            let mut game_list = session.get("othello").await?.unwrap_or(GameList::new());
-            let mut game = game_list.get(message_id);
-            // 尝试操作棋局
-            match game.try_put(pos, user.clone()) {
-                // 操作成功
-                Ok(is_ended) => {
-                    let method: EditMessageText;
-                    // 棋局是否结束
-                    if is_ended {
-                        method = EditMessageText::new(
-                            chat_id,
-                            message_id,
-                            format!(
-                                "黑白棋\n\n{}\n\n{}",
-                                game.get_players(),
-                                game.get_game_result()
-                            ),
-                        );
-                        // 清理棋局列表
-                        if game_list.update_and_check_empty(message_id, None) {
-                            session.remove("othello").await?;
-                        } else {
-                            session.set("othello", &game_list).await?;
+            // 用于回应 Callback Query 的信息
+            let mut answer_callback_query = None;
+            // 尝试获取触发游戏的原命令消息
+            if let Some(command_message) = &message.reply_to {
+                // 尝试从 session 获取游戏
+                let mut session = context
+                    .session_manager
+                    .get_session(command_message.as_ref())?;
+                let game: Option<Game> = session
+                    .get(format!("othello_{}", command_message.id))
+                    .await?;
+                if let Some(mut game) = game {
+                    let chat_id = message.get_chat_id();
+                    let user = query.from;
+                    // 尝试操作棋局
+                    match game.try_put(pos, &user) {
+                        // 操作成功
+                        Ok(is_ended) => {
+                            let edit_message_text;
+                            // 棋局是否结束
+                            if is_ended {
+                                edit_message_text = EditMessageText::new(
+                                    chat_id,
+                                    message.id,
+                                    format!(
+                                        "黑白棋\n\n{}\n\n{}",
+                                        game.get_players(),
+                                        game.get_game_result()
+                                    ),
+                                )
+                                .reply_markup(game.get_inline_keyboard());
+                                // 删除棋局
+                                session
+                                    .remove(format!("othello_{}", command_message.id))
+                                    .await?;
+                            } else {
+                                edit_message_text = EditMessageText::new(
+                                    chat_id,
+                                    message.id,
+                                    format!(
+                                        "黑白棋\n\n{}\n\n轮到：{}",
+                                        game.get_players(),
+                                        game.get_next_player()
+                                    ),
+                                )
+                                .reply_markup(game.get_inline_keyboard());
+                                // 存储棋局
+                                session
+                                    .set(format!("othello_{}", command_message.id), &game)
+                                    .await?;
+                            }
+                            context.api.execute(edit_message_text).await?;
+                            answer_callback_query = Some(AnswerCallbackQuery::new(&query.id));
                         }
-                    } else {
-                        method = EditMessageText::new(
-                            chat_id,
-                            message_id,
-                            format!(
-                                "黑白棋\n\n{}\n\n轮到：{}",
-                                game.get_players(),
-                                game.get_next_player()
-                            ),
-                        )
-                        .reply_markup(game.get_inline_keyboard());
-                        // 存储棋局
-                        game_list.update_and_check_empty(message_id, Some(game.clone()));
-                        session.set("othello", &game_list).await?;
+                        // 操作失败
+                        Err(err) => {
+                            answer_callback_query = Some(
+                                AnswerCallbackQuery::new(&query.id)
+                                    .text(err.to_string())
+                                    .show_alert(true),
+                            );
+                        }
                     }
-                    context.api.execute(method).await?;
-                    // 回应 callback
-                    let method = AnswerCallbackQuery::new(query.id);
-                    context.api.execute(method).await?;
-                }
-                // 操作失败
-                Err(err) => {
-                    let method = AnswerCallbackQuery::new(query.id)
-                        .text(err.to_string())
-                        .show_alert(true);
-                    context.api.execute(method).await?;
                 }
             }
+            // 回应 callback
+            context
+                .api
+                .execute(
+                    answer_callback_query.unwrap_or(
+                        AnswerCallbackQuery::new(&query.id)
+                            .text("游戏已结束")
+                            .show_alert(true),
+                    ),
+                )
+                .await?;
             return Ok(HandlerResult::Stop);
         }
     }
