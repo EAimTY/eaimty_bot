@@ -16,7 +16,8 @@ pub async fn group_message_filter(
         || matches!(message.kind, MessageKind::Supergroup { .. })
     {
         // 若 bot_info 为空，尝试获取并存储
-        if let None = *context.bot_info.username.read().await {
+        let bot_info_username = (*context.bot_info.username.read().await).clone();
+        if let None = bot_info_username {
             let bot = context.api.execute(GetMe).await?;
             let mut bot_info_id = context.bot_info.id.write().await;
             let mut bot_info_username = context.bot_info.username.write().await;
