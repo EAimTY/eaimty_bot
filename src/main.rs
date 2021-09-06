@@ -84,10 +84,7 @@ async fn run(token: String, proxy: Option<String>, webhook_port: Option<String>)
         api: api.clone(),
         session_manager: SessionManager::new(backend),
         tmpdir,
-        bot_info: context::BotInfo {
-            id: RwLock::new(None),
-            username: RwLock::new(None),
-        },
+        bot_info: RwLock::new(None),
     });
     dispatcher.add_handler(handlers::access::group_message_filter);
     dispatcher.add_handler(handlers::about::about_command_handler);
