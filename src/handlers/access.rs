@@ -1,4 +1,4 @@
-use crate::{context, error::ErrorHandler};
+use crate::{context::Context, error::ErrorHandler};
 use carapax::{
     handler,
     methods::GetMe,
@@ -6,9 +6,21 @@ use carapax::{
     HandlerResult,
 };
 
+#[derive(Clone)]
+pub struct BotInfo {
+    pub id: i64,
+    pub username: String,
+}
+
+impl BotInfo {
+    pub fn from(id: i64, username: String) -> Self {
+        Self { id, username }
+    }
+}
+
 #[handler]
 pub async fn group_message_filter(
-    context: &context::Context,
+    context: &Context,
     message: Message,
 ) -> Result<HandlerResult, ErrorHandler> {
     // 只处理群组内消息
@@ -20,7 +32,7 @@ pub async fn group_message_filter(
         if let None = bot_info {
             let bot = context.api.execute(GetMe).await?;
             let mut bot_info = context.bot_info.write().await;
-            *bot_info = Some(context::BotInfo::from(bot.id, bot.username));
+            *bot_info = Some(BotInfo::from(bot.id, bot.username));
         }
         if let Some(text) = message.get_text() {
             // 检查消息文字是否以“/”起始
