@@ -11,7 +11,6 @@ repository = "https://github.com/EAimTY/eaimty_bot"
 [dependencies]
 carapax = { version = "0.10", features = ["session-fs"] }
 getopts = "0.2"
-lazy_static = "1.4"
 leptess = "0.13"
 rand = "0.8"
 reqwest = { version = "0.11", default-features = false }

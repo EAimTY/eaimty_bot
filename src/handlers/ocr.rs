@@ -9,7 +9,6 @@ use carapax::{
     },
     HandlerResult,
 };
-use lazy_static::lazy_static;
 use leptess::LepTess;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -17,11 +16,11 @@ use tokio::{fs::File, io::AsyncWriteExt};
 use tokio_stream::StreamExt;
 
 // 支持的 OCR 语言列表类型
-struct OcrLangs<'a> {
-    langs: HashMap<&'a str, &'a str>,
+pub struct OcrLangs {
+    langs: HashMap<String, String>,
 }
 
-impl<'a> OcrLangs<'a> {
+impl OcrLangs {
     fn new() -> Self {
         Self {
             langs: HashMap::new(),
@@ -29,8 +28,18 @@ impl<'a> OcrLangs<'a> {
     }
 
     // 添加 OCR 语言
-    fn add(&mut self, lang: &'a str, name: &'a str) {
-        self.langs.insert(lang, name);
+    fn add(&mut self, lang: &str, name: &str) {
+        self.langs.insert(lang.to_string(), name.to_string());
+    }
+
+    pub fn init() -> Self {
+        // 定义 OCR 语言列表，在此处添加语言，参数一为 Tesseract 语言包名称，参数二为语言显示名称
+        let mut ocr_langs = OcrLangs::new();
+        ocr_langs.add("eng", "English");
+        ocr_langs.add("jpn", "日本語");
+        ocr_langs.add("chi_sim", "简体中文");
+        ocr_langs.add("chi_tra", "繁體中文");
+        ocr_langs
     }
 
     // 获取语言列表按钮
@@ -38,7 +47,7 @@ impl<'a> OcrLangs<'a> {
         let mut keyboad: Vec<Vec<InlineKeyboardButton>> = Vec::new();
         for (lang, name) in &self.langs {
             keyboad.push(vec![InlineKeyboardButton::new(
-                *name,
+                name,
                 InlineKeyboardButtonKind::CallbackData(format!("ocr-{}", lang)),
             )]);
         }
@@ -71,8 +80,11 @@ impl<'a> OcrLangs<'a> {
     }
 
     // 获取语言的显示名称
-    fn get_lang_name(&self, lang: &str) -> &str {
-        self.langs.get(lang).unwrap_or(&"")
+    fn get_lang_name(&self, lang: &str) -> String {
+        self.langs
+            .get(lang)
+            .unwrap_or(&String::from(""))
+            .to_string()
     }
 }
 
@@ -80,19 +92,6 @@ impl<'a> OcrLangs<'a> {
 enum Operation {
     Select(String),
     Reselect,
-}
-
-// 定义全局 OCR 语言列表
-lazy_static! {
-    static ref OCR_LANGS: OcrLangs<'static> = {
-        let mut ocr_langs = OcrLangs::new();
-        // 在此处添加语言，参数一为 Tesseract 语言包名称，参数二为语言显示名称
-        ocr_langs.add("eng", "English");
-        ocr_langs.add("jpn", "日本語");
-        ocr_langs.add("chi_sim", "简体中文");
-        ocr_langs.add("chi_tra", "繁體中文");
-        ocr_langs
-    };
 }
 
 // 用于在 session 中存储 OCR 状态的类型
@@ -135,7 +134,7 @@ pub async fn ocr_command_handler(
         session.set("ocr", &Ocr::new()).await?;
         // 发送语言选择信息
         let method = SendMessage::new(chat_id, "请选择 OCR 目标语言").reply_markup(
-            ReplyMarkup::InlineKeyboardMarkup(OCR_LANGS.get_langs_keyboard()),
+            ReplyMarkup::InlineKeyboardMarkup(context.ocr_langs.get_langs_keyboard()),
         );
         context.api.execute(method).await?;
     }
@@ -150,7 +149,7 @@ pub async fn ocr_inlinekeyboard_handler(
     // 检查非空 query
     if let Some(data) = query.data {
         // 尝试 parse callback data
-        if let Some(operation) = OCR_LANGS.try_parse_callback(data) {
+        if let Some(operation) = context.ocr_langs.try_parse_callback(data) {
             let message = query.message.unwrap();
             let chat_id = message.get_chat_id();
             let user_id = query.from.id;
@@ -171,13 +170,13 @@ pub async fn ocr_inlinekeyboard_handler(
                     method = EditMessageText::new(
                         chat_id,
                         message.id,
-                        format!("OCR 目标语言：{}\n\n请发送需要识别的图片（需以 Telegram 图片方式发送）", OCR_LANGS.get_lang_name(&lang)),
+                        format!("OCR 目标语言：{}\n\n请发送需要识别的图片（需以 Telegram 图片方式发送）", context.ocr_langs.get_lang_name(&lang)),
                     )
-                    .reply_markup(OCR_LANGS.get_reselect_keyboard());
+                    .reply_markup(context.ocr_langs.get_reselect_keyboard());
                 } else {
                     // 用户目标操作是重新选择语言
                     method = EditMessageText::new(chat_id, message.id, "请选择 OCR 目标语言：")
-                        .reply_markup(OCR_LANGS.get_langs_keyboard());
+                        .reply_markup(context.ocr_langs.get_langs_keyboard());
                 }
                 context.api.execute(method).await?;
                 // 回应 callback
