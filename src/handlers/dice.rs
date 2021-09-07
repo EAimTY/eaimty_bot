@@ -25,9 +25,12 @@ async fn is_dice(_context: &Context, message: &Message) -> Result<bool, ErrorHan
 }
 
 #[handler(predicate=is_dice)]
-pub async fn dice_keyword_handler(context: &Context, message: Message) -> Result<(), ErrorHandler> {
+pub async fn dice_keyword_handler(
+    context: &Context,
+    message: Message,
+) -> Result<HandlerResult, ErrorHandler> {
     let chat_id = message.get_chat_id();
     let method = SendDice::new(chat_id, DiceKind::Bones);
     context.api.execute(method).await?;
-    Ok(())
+    Ok(HandlerResult::Continue)
 }
