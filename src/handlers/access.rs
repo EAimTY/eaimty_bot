@@ -1,4 +1,4 @@
-use crate::{context::Context, error::ErrorHandler};
+use crate::{context::Context, error::Error};
 use carapax::{
     handler,
     methods::GetMe,
@@ -22,7 +22,7 @@ impl BotInfo {
 pub async fn group_message_filter(
     context: &Context,
     message: Message,
-) -> Result<HandlerResult, ErrorHandler> {
+) -> Result<HandlerResult, Error> {
     // 只处理群组内消息
     if matches!(message.kind, MessageKind::Group { .. })
         || matches!(message.kind, MessageKind::Supergroup { .. })

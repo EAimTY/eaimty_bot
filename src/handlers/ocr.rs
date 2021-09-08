@@ -1,4 +1,4 @@
-use crate::{context::Context, error::ErrorHandler};
+use crate::{context::Context, error::Error};
 use carapax::{
     handler,
     methods::{AnswerCallbackQuery, EditMessageText, GetFile, SendMessage},
@@ -122,7 +122,7 @@ impl Ocr {
 pub async fn ocr_command_handler(
     context: &Context,
     command: Command,
-) -> Result<HandlerResult, ErrorHandler> {
+) -> Result<HandlerResult, Error> {
     let message = command.get_message();
     let chat_id = message.get_chat_id();
     if let Some(user) = message.get_user() {
@@ -130,8 +130,12 @@ pub async fn ocr_command_handler(
         // 在 session 中存储 OCR 状态
         let mut session = context
             .session_manager
-            .get_session(SessionId::new(chat_id, user_id))?;
-        session.set("ocr", &Ocr::new()).await?;
+            .get_session(SessionId::new(chat_id, user_id))
+            .or_else(|_| return Err(Error::GetSessionError))?;
+        session
+            .set("ocr", &Ocr::new())
+            .await
+            .or_else(|_| return Err(Error::SessionDataError))?;
         // 发送语言选择信息
         let method = SendMessage::new(chat_id, "请选择 OCR 目标语言").reply_markup(
             ReplyMarkup::InlineKeyboardMarkup(context.ocr_langs.get_langs_keyboard()),
@@ -145,7 +149,7 @@ pub async fn ocr_command_handler(
 pub async fn ocr_inlinekeyboard_handler(
     context: &Context,
     query: CallbackQuery,
-) -> Result<HandlerResult, ErrorHandler> {
+) -> Result<HandlerResult, Error> {
     // 检查非空 query
     if let Some(data) = query.data {
         // 尝试 parse callback data
@@ -156,13 +160,20 @@ pub async fn ocr_inlinekeyboard_handler(
             // 从 session 获取 OCR 状态
             let mut session = context
                 .session_manager
-                .get_session(SessionId::new(chat_id, user_id))?;
-            let ocr: Option<Ocr> = session.get("ocr").await?;
+                .get_session(SessionId::new(chat_id, user_id))
+                .or_else(|_| return Err(Error::GetSessionError))?;
+            let ocr: Option<Ocr> = session
+                .get("ocr")
+                .await
+                .or_else(|_| return Err(Error::SessionDataError))?;
             // 检查该用户是否触发过 /ocr 指令
             if let Some(mut ocr) = ocr {
                 // 用户触发过指令，保存用户的目标操作
                 ocr.set(&operation);
-                session.set("ocr", &ocr).await?;
+                session
+                    .set("ocr", &ocr)
+                    .await
+                    .or_else(|_| return Err(Error::SessionDataError))?;
                 let method: EditMessageText;
                 // 检查用户目标操作是否是选择语言
                 if let Operation::Select(lang) = operation {
@@ -196,10 +207,7 @@ pub async fn ocr_inlinekeyboard_handler(
 }
 
 #[handler]
-pub async fn ocr_image_handler(
-    context: &Context,
-    update: Update,
-) -> Result<HandlerResult, ErrorHandler> {
+pub async fn ocr_image_handler(context: &Context, update: Update) -> Result<HandlerResult, Error> {
     // 检查 Update 类型为 Message
     if let UpdateKind::Message(message) = &update.kind {
         // 检查 Message 类型为 Photo 并获取 photo data
@@ -210,12 +218,21 @@ pub async fn ocr_image_handler(
                 // 从 session 获取 OCR 状态
                 let mut session = context
                     .session_manager
-                    .get_session(SessionId::new(chat_id, user.id))?;
-                let ocr: Option<Ocr> = session.get("ocr").await?;
+                    .get_session(SessionId::new(chat_id, user.id))
+                    .or_else(|_| return Err(Error::GetSessionError))?;
+                let ocr: Option<Ocr> = session
+                    .get("ocr")
+                    .await
+                    .or_else(|_| return Err(Error::SessionDataError))?;
                 // 检查该用户是否触发过 /ocr 指令
                 if let Some(ocr) = ocr {
                     // 检查该用户是否已经选择过 OCR 目标语言
                     if let Some(lang) = ocr.get() {
+                        // 从 session 中移除存储的 OCR 状态
+                        session
+                            .remove("ocr")
+                            .await
+                            .or_else(|_| return Err(Error::SessionDataError))?;
                         // 获取图片 URL
                         let file_id = &data.last().unwrap().file_id;
                         let method = GetFile::new(file_id);
@@ -228,13 +245,24 @@ pub async fn ocr_image_handler(
                             path
                         };
                         let mut photo = File::create(&photo_save_path).await?;
-                        let mut stream = context.api.download_file(photo_url).await?;
+                        let mut stream = context
+                            .api
+                            .download_file(photo_url)
+                            .await
+                            .or_else(|_| return Err(Error::FileDownloadError))?;
                         while let Some(chunk) = stream.next().await {
-                            photo.write_all(&chunk?).await?;
+                            photo
+                                .write_all(
+                                    &chunk.or_else(|_| return Err(Error::FileDownloadError))?,
+                                )
+                                .await?;
                         }
                         // 使用 LepTess 识别图片
-                        let mut leptess = LepTess::new(None, &lang)?;
-                        leptess.set_image(photo_save_path)?;
+                        let mut leptess = LepTess::new(None, &lang)
+                            .or_else(|_| return Err(Error::TessInitError))?;
+                        leptess
+                            .set_image(photo_save_path)
+                            .or_else(|_| return Err(Error::TessReadImageError))?;
                         let result = leptess.get_utf8_text().unwrap_or(String::from("识别失败"));
                         // 发送结果
                         let method = SendMessage::new(chat_id, result);

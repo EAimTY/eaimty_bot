@@ -1,4 +1,4 @@
-use crate::{context::Context, error::ErrorHandler};
+use crate::{context::Context, error::Error};
 use carapax::{
     handler,
     methods::{AnswerCallbackQuery, EditMessageText, SendMessage},
@@ -536,16 +536,20 @@ impl Game {
 pub async fn minesweeper_command_handler(
     context: &Context,
     command: Command,
-) -> Result<HandlerResult, ErrorHandler> {
+) -> Result<HandlerResult, Error> {
     let message = command.get_message();
     let chat_id = message.get_chat_id();
     // 创建新游戏
     let game = Game::new((8, 8), 9);
     // 向 session 存储游戏
-    let mut session = context.session_manager.get_session(message)?;
+    let mut session = context
+        .session_manager
+        .get_session(message)
+        .or_else(|_| return Err(Error::GetSessionError))?;
     session
         .set(format!("minesweeper_{}", message.id), &game)
-        .await?;
+        .await
+        .or_else(|_| return Err(Error::SessionDataError))?;
     // 发送游戏地图
     let method = SendMessage::new(chat_id, "扫雷")
         .reply_markup(ReplyMarkup::InlineKeyboardMarkup(
@@ -560,7 +564,7 @@ pub async fn minesweeper_command_handler(
 pub async fn minesweeper_inlinekeyboard_handler(
     context: &Context,
     query: CallbackQuery,
-) -> Result<HandlerResult, ErrorHandler> {
+) -> Result<HandlerResult, Error> {
     // 检查非空 query
     if let Some(data) = query.data {
         // 尝试 parse callback data
@@ -571,10 +575,12 @@ pub async fn minesweeper_inlinekeyboard_handler(
                 // 尝试从 session 获取游戏
                 let mut session = context
                     .session_manager
-                    .get_session(command_message.as_ref())?;
+                    .get_session(command_message.as_ref())
+                    .or_else(|_| return Err(Error::GetSessionError))?;
                 let game: Option<Game> = session
                     .get(format!("minesweeper_{}", command_message.id))
-                    .await?;
+                    .await
+                    .or_else(|_| return Err(Error::SessionDataError))?;
                 if let Some(mut game) = game {
                     // 检查操作目标块在游戏地图范围内
                     let chat_id = message.get_chat_id();
@@ -597,7 +603,8 @@ pub async fn minesweeper_inlinekeyboard_handler(
                                 // 清理游戏列表
                                 session
                                     .remove(format!("minesweeper_{}", command_message.id))
-                                    .await?;
+                                    .await
+                                    .or_else(|_| return Err(Error::SessionDataError))?;
                             }
                             // 游戏正在进行
                             GameState::OnGoing => {
@@ -610,7 +617,8 @@ pub async fn minesweeper_inlinekeyboard_handler(
                                 // 存储游戏
                                 session
                                     .set(format!("minesweeper_{}", command_message.id), &game)
-                                    .await?;
+                                    .await
+                                    .or_else(|_| return Err(Error::SessionDataError))?;
                             }
                             // 游戏成功
                             GameState::Succeeded => {
@@ -623,7 +631,8 @@ pub async fn minesweeper_inlinekeyboard_handler(
                                 // 清理游戏列表
                                 session
                                     .remove(format!("minesweeper_{}", command_message.id))
-                                    .await?;
+                                    .await
+                                    .or_else(|_| return Err(Error::SessionDataError))?;
                             }
                         }
                         context.api.execute(method).await?;

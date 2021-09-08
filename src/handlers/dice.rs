@@ -1,4 +1,4 @@
-use crate::{context::Context, error::ErrorHandler};
+use crate::{context::Context, error::Error};
 use carapax::{
     handler,
     methods::SendDice,
@@ -10,14 +10,14 @@ use carapax::{
 pub async fn dice_command_handler(
     context: &Context,
     command: Command,
-) -> Result<HandlerResult, ErrorHandler> {
+) -> Result<HandlerResult, Error> {
     let chat_id = command.get_message().get_chat_id();
     let method = SendDice::new(chat_id, DiceKind::Bones);
     context.api.execute(method).await?;
     Ok(HandlerResult::Stop)
 }
 
-async fn is_dice(_context: &Context, message: &Message) -> Result<bool, ErrorHandler> {
+async fn is_dice(_context: &Context, message: &Message) -> Result<bool, Error> {
     Ok(message
         .get_text()
         .map(|text| text.data.contains("骰子"))
@@ -28,7 +28,7 @@ async fn is_dice(_context: &Context, message: &Message) -> Result<bool, ErrorHan
 pub async fn dice_keyword_handler(
     context: &Context,
     message: Message,
-) -> Result<HandlerResult, ErrorHandler> {
+) -> Result<HandlerResult, Error> {
     let chat_id = message.get_chat_id();
     let method = SendDice::new(chat_id, DiceKind::Bones);
     context.api.execute(method).await?;

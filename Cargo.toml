@@ -13,9 +13,9 @@ carapax = { version = "0.10", features = ["session-fs"] }
 getopts = "0.2"
 leptess = "0.13"
 rand = "0.8"
-reqwest = { version = "0.11", default-features = false }
 serde = "1.0"
 tempfile = "3.2"
+thiserror = "1.0"
 tokio = { version = "1.10", features = ["rt-multi-thread", "macros"] }
 tokio-stream = { version = "0.1", default-features = false }
 
