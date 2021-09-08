@@ -1,4 +1,7 @@
-use crate::{context::Context, error::Error};
+use crate::{
+    context::Context,
+    error::{Error, OthelloOpError},
+};
 use carapax::{
     handler,
     methods::{AnswerCallbackQuery, EditMessageText, SendMessage},
@@ -9,7 +12,7 @@ use carapax::{
     HandlerResult,
 };
 use serde::{Deserialize, Serialize};
-use std::{cmp, error::Error as StdError, fmt};
+use std::{cmp, fmt};
 
 // 棋子类型
 #[derive(Copy, Clone, PartialEq, Serialize, Deserialize)]
@@ -73,28 +76,6 @@ impl PiecePosition {
     }
 }
 
-// 落子失败类型
-#[derive(Debug)]
-enum ActionError {
-    Unplaceable,
-    NotYourTurn,
-}
-
-impl fmt::Display for ActionError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            ActionError::Unplaceable => write!(f, "无法在此落子"),
-            ActionError::NotYourTurn => write!(f, "不是你的回合"),
-        }
-    }
-}
-
-impl StdError for ActionError {
-    fn source(&self) -> Option<&(dyn StdError + 'static)> {
-        None
-    }
-}
-
 // 存储玩家信息
 #[derive(Clone, Serialize, Deserialize)]
 struct Player {
@@ -143,8 +124,8 @@ impl Game {
         self.board[pos.row][pos.col]
     }
 
-    // 设定指定位子的棋子，失败时返回 Err(ActionError::Unplaceable)
-    fn set(&mut self, pos: PiecePosition, piece: Piece) -> Result<(), ActionError> {
+    // 设定指定位子的棋子，失败时返回 Err(OthelloOpError::Unplaceable)
+    fn set(&mut self, pos: PiecePosition, piece: Piece) -> Result<(), OthelloOpError> {
         let mut is_changed = false;
         if self.board[pos.row][pos.col] == Piece::Empty {
             // 向上查找
@@ -359,7 +340,7 @@ impl Game {
         if is_changed {
             Ok(())
         } else {
-            Err(ActionError::Unplaceable)
+            Err(OthelloOpError::CantPutHere)
         }
     }
 
@@ -494,8 +475,8 @@ impl Game {
         true
     }
 
-    // 尝试落子，成功时返回 Ok(棋局是否结束)，失败时返回 Err(ActionError)
-    fn try_put(&mut self, pos: PiecePosition, user: &User) -> Result<bool, ActionError> {
+    // 尝试落子，成功时返回 Ok(棋局是否结束)，失败时返回 Err(OthelloOpError)
+    fn try_put(&mut self, pos: PiecePosition, user: &User) -> Result<bool, OthelloOpError> {
         // 轮到 Black 落子
         if let Piece::Black = self.turn {
             // 有玩家作为 Black
@@ -512,7 +493,7 @@ impl Game {
                         Err(err) => return Err(err),
                     }
                 } else {
-                    return Err(ActionError::NotYourTurn);
+                    return Err(OthelloOpError::NotYourTurn);
                 }
             // 没有玩家作为 Black
             } else {
@@ -537,7 +518,7 @@ impl Game {
                         Err(err) => return Err(err),
                     }
                 } else {
-                    return Err(ActionError::NotYourTurn);
+                    return Err(OthelloOpError::NotYourTurn);
                 }
             } else {
                 match self.set(pos, Piece::White) {

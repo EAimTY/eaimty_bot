@@ -1,4 +1,7 @@
-use crate::{context::Context, error::Error};
+use crate::{
+    context::Context,
+    error::{Error, TicTacToeOpError},
+};
 use carapax::{
     handler,
     methods::{AnswerCallbackQuery, EditMessageText, SendMessage},
@@ -9,7 +12,7 @@ use carapax::{
     HandlerResult,
 };
 use serde::{Deserialize, Serialize};
-use std::{error::Error as StdError, fmt};
+use std::fmt;
 
 // 棋子类型
 #[derive(Copy, Clone, PartialEq, Serialize, Deserialize)]
@@ -70,28 +73,6 @@ enum GameState {
     Win,
 }
 
-// 落子失败类型
-#[derive(Debug)]
-enum ActionError {
-    CellNotEmpty,
-    NotYourTurn,
-}
-
-impl fmt::Display for ActionError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            ActionError::CellNotEmpty => write!(f, "请在空白处落子"),
-            ActionError::NotYourTurn => write!(f, "不是你的回合"),
-        }
-    }
-}
-
-impl StdError for ActionError {
-    fn source(&self) -> Option<&(dyn StdError + 'static)> {
-        None
-    }
-}
-
 // 存储玩家信息
 #[derive(Clone, Serialize, Deserialize)]
 struct Player {
@@ -133,17 +114,17 @@ impl Game {
         self.user[pos.row][pos.col]
     }
 
-    // 设定指定位子的棋子，失败时返回 Err(ActionError)
-    fn set(&mut self, pos: PiecePosition, piece: Piece) -> Result<(), ActionError> {
+    // 设定指定位子的棋子，失败时返回 Err(TicTacToeOpError)
+    fn set(&mut self, pos: PiecePosition, piece: Piece) -> Result<(), TicTacToeOpError> {
         if self.get(pos) == Piece::Empty {
             self.user[pos.row][pos.col] = piece;
             return Ok(());
         }
-        Err(ActionError::CellNotEmpty)
+        Err(TicTacToeOpError::CellNotEmpty)
     }
 
-    // 尝试落子，成功时返回 Ok(棋局状态)，失败时返回 Err(ActionError)
-    fn try_put(&mut self, pos: PiecePosition, user: &User) -> Result<GameState, ActionError> {
+    // 尝试落子，成功时返回 Ok(棋局状态)，失败时返回 Err(TicTacToeOpError)
+    fn try_put(&mut self, pos: PiecePosition, user: &User) -> Result<GameState, TicTacToeOpError> {
         // 轮到 Cross 落子
         if let Piece::Cross = self.turn {
             // 有玩家作为 Cross
@@ -155,7 +136,7 @@ impl Game {
                         Err(err) => return Err(err),
                     }
                 } else {
-                    return Err(ActionError::NotYourTurn);
+                    return Err(TicTacToeOpError::NotYourTurn);
                 }
             // 没有玩家作为 Cross
             } else {
@@ -176,7 +157,7 @@ impl Game {
                         Err(err) => return Err(err),
                     }
                 } else {
-                    return Err(ActionError::NotYourTurn);
+                    return Err(TicTacToeOpError::NotYourTurn);
                 }
             } else {
                 match self.set(pos, Piece::Nought) {
