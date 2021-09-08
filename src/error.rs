@@ -39,6 +39,23 @@ pub enum ConfigError {
     Help(String),
 }
 
+// Telegram Bot API 通信错误
+#[derive(Error, Debug)]
+pub enum ServerError {
+    // API 创建错误
+    #[error("Failed to create API")]
+    ApiError,
+    // 代理设置错误
+    #[error("Failed to set proxy")]
+    ProxyError,
+    // 临时文件目录创建错误
+    #[error("Failed to create temp directory")]
+    TmpdirError,
+    // Webhook Server 运行错误
+    #[error("Failed to run webhook server")]
+    WebhookServerError,
+}
+
 // Tic-Tac-Toe 错误操作
 #[derive(Error, Debug)]
 pub enum TicTacToeOpError {

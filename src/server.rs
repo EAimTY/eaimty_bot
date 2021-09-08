@@ -1,35 +1,10 @@
-use crate::{config::Config, context::Context, handlers};
+use crate::{config::Config, context::Context, error::ServerError, handlers};
 use carapax::{
     longpoll::LongPoll,
     session::{backend::fs::FilesystemBackend, SessionCollector, SessionManager},
     webhook, Api, Config as ApiConfig, Dispatcher,
 };
-use std::{error::Error, fmt, time::Duration};
-
-#[derive(Debug)]
-pub enum ServerError {
-    ApiError,
-    ProxyError,
-    TmpdirError,
-    WebhookError,
-}
-
-impl fmt::Display for ServerError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            ServerError::ApiError => write!(f, "Failed to create API"),
-            ServerError::ProxyError => write!(f, "Failed to set proxy"),
-            ServerError::TmpdirError => write!(f, "Failed to create temp directory"),
-            ServerError::WebhookError => write!(f, "Failed to run webhook server"),
-        }
-    }
-}
-
-impl Error for ServerError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        None
-    }
-}
+use std::time::Duration;
 
 pub struct Server {}
 
@@ -84,7 +59,7 @@ impl Server {
             println!("Running at port {} in webhook mode", config.webhook_port);
             webhook::run_server(([127, 0, 0, 1], config.webhook_port), "/", dispatcher)
                 .await
-                .or_else(|_| return Err(ServerError::WebhookError))?;
+                .or_else(|_| return Err(ServerError::WebhookServerError))?;
         }
         Ok(())
     }
