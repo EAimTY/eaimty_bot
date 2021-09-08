@@ -21,7 +21,7 @@ impl carapax::ErrorHandler for ErrorHandler {
     async fn handle(&mut self, err: carapax::HandlerError) -> ErrorPolicy {
         // 打印错误至 stderr
         eprintln!(
-            "[{}]error: {}",
+            "[{}]{}",
             Local::now().format("%F %T %z").to_string(),
             err
         );

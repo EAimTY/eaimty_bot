@@ -3,7 +3,7 @@ use thiserror::Error;
 #[derive(Error, Debug)]
 pub enum Error {
     // 无法通过 Telegram Bot API 执行操作的错误
-    #[error("failed to execute method: {0}")]
+    #[error("{0}")]
     ExecuteError(#[from] carapax::ExecuteError),
     // 无法获取 session 的错误
     #[error("failed to get session")]
@@ -12,7 +12,7 @@ pub enum Error {
     #[error("failed to read / write data from session")]
     SessionDataError,
     // 无法操作 IO 的错误
-    #[error("failed to operate file: {0}")]
+    #[error("{0}")]
     IoError(#[from] std::io::Error),
     // 下载文件的错误
     #[error("failed to download file")]
