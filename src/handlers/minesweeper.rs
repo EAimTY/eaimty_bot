@@ -8,6 +8,7 @@ use carapax::{
     },
     HandlerResult,
 };
+use chrono::{Duration, Local};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -256,6 +257,7 @@ struct Game {
     height: usize,
     mine_count: usize,
     players: HashMap<String, u8>,
+    start_time: i64,
 }
 
 impl Game {
@@ -286,6 +288,7 @@ impl Game {
             height,
             mine_count,
             players: HashMap::new(),
+            start_time: Local::now().timestamp(),
         }
     }
 
@@ -529,6 +532,16 @@ impl Game {
         }
         players
     }
+
+    // 获取用时
+    fn get_time(&self) -> String {
+        let duration = Duration::seconds(Local::now().timestamp() - self.start_time);
+        format!(
+            "用时：{} 分 {} 秒",
+            duration.num_minutes(),
+            duration.num_seconds()
+        )
+    }
 }
 
 #[handler(command = "/minesweeper")]
@@ -594,8 +607,9 @@ pub async fn minesweeper_inlinekeyboard_handler(
                                     chat_id,
                                     message.id,
                                     format!(
-                                        "扫雷失败！\n\n{}\n{} 引爆了地雷",
+                                        "扫雷失败！\n\n{}\n{}\n\n{} 引爆了地雷",
                                         game.get_players(),
+                                        game.get_time(),
                                         query.from.get_full_name()
                                     ),
                                 )
@@ -625,7 +639,11 @@ pub async fn minesweeper_inlinekeyboard_handler(
                                 edit_message_text = EditMessageText::new(
                                     chat_id,
                                     message.id,
-                                    format!("扫雷成功！\n\n{}", game.get_players()),
+                                    format!(
+                                        "扫雷成功！\n\n{}\n{}",
+                                        game.get_players(),
+                                        game.get_time()
+                                    ),
                                 )
                                 .reply_markup(game.get_inline_keyboard());
                                 // 清理游戏列表

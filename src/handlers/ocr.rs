@@ -21,6 +21,16 @@ pub struct OcrLangs {
 }
 
 impl OcrLangs {
+    pub fn init() -> Self {
+        // 定义 OCR 语言列表，在此处添加语言，参数一为 Tesseract 语言包名称，参数二为语言显示名称
+        let mut ocr_langs = OcrLangs::new();
+        ocr_langs.add("eng", "English");
+        ocr_langs.add("jpn", "日本語");
+        ocr_langs.add("chi_sim", "简体中文");
+        ocr_langs.add("chi_tra", "繁體中文");
+        ocr_langs
+    }
+
     fn new() -> Self {
         Self {
             langs: HashMap::new(),
@@ -30,16 +40,6 @@ impl OcrLangs {
     // 添加 OCR 语言
     fn add(&mut self, lang: &str, name: &str) {
         self.langs.insert(lang.to_string(), name.to_string());
-    }
-
-    pub fn init() -> Self {
-        // 定义 OCR 语言列表，在此处添加语言，参数一为 Tesseract 语言包名称，参数二为语言显示名称
-        let mut ocr_langs = OcrLangs::new();
-        ocr_langs.add("eng", "English");
-        ocr_langs.add("jpn", "日本語");
-        ocr_langs.add("chi_sim", "简体中文");
-        ocr_langs.add("chi_tra", "繁體中文");
-        ocr_langs
     }
 
     // 获取语言列表按钮
