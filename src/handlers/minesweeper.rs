@@ -551,12 +551,12 @@ pub async fn minesweeper_command_handler(
         .await
         .or_else(|_| return Err(Error::SessionDataError))?;
     // 发送游戏地图
-    let method = SendMessage::new(chat_id, "扫雷")
+    let send_message = SendMessage::new(chat_id, "扫雷")
         .reply_markup(ReplyMarkup::InlineKeyboardMarkup(
             game.get_inline_keyboard(),
         ))
         .reply_to_message_id(message.id);
-    context.api.execute(method).await?;
+    context.api.execute(send_message).await?;
     Ok(HandlerResult::Stop)
 }
 
@@ -569,6 +569,7 @@ pub async fn minesweeper_inlinekeyboard_handler(
     if let Some(data) = query.data {
         // 尝试 parse callback data
         if let Some(pos) = BoxPosition::try_parse_callback(data) {
+            let mut answer_callback_query = None;
             let message = query.message.unwrap();
             // 尝试获取触发游戏的原命令消息
             if let Some(command_message) = &message.reply_to {
@@ -585,12 +586,12 @@ pub async fn minesweeper_inlinekeyboard_handler(
                     // 检查操作目标块在游戏地图范围内
                     let chat_id = message.get_chat_id();
                     if game.contains(&pos) {
-                        let method;
+                        let edit_message_text;
                         // 操作地图并检查游戏是否结束
                         match game.click(pos, query.from.get_full_name()) {
                             // 游戏失败
                             GameState::Failed => {
-                                method = EditMessageText::new(
+                                edit_message_text = EditMessageText::new(
                                     chat_id,
                                     message.id,
                                     format!(
@@ -608,7 +609,7 @@ pub async fn minesweeper_inlinekeyboard_handler(
                             }
                             // 游戏正在进行
                             GameState::OnGoing => {
-                                method = EditMessageText::new(
+                                edit_message_text = EditMessageText::new(
                                     chat_id,
                                     message.id,
                                     format!("扫雷\n\n{}", game.get_players()),
@@ -622,7 +623,7 @@ pub async fn minesweeper_inlinekeyboard_handler(
                             }
                             // 游戏成功
                             GameState::Succeeded => {
-                                method = EditMessageText::new(
+                                edit_message_text = EditMessageText::new(
                                     chat_id,
                                     message.id,
                                     format!("扫雷成功！\n\n{}", game.get_players()),
@@ -635,13 +636,22 @@ pub async fn minesweeper_inlinekeyboard_handler(
                                     .or_else(|_| return Err(Error::SessionDataError))?;
                             }
                         }
-                        context.api.execute(method).await?;
+                        answer_callback_query = Some(AnswerCallbackQuery::new(&query.id));
+                        context.api.execute(edit_message_text).await?;
                     }
                 }
             }
             // 回应 callback
-            let method = AnswerCallbackQuery::new(query.id);
-            context.api.execute(method).await?;
+            context
+                .api
+                .execute(
+                    answer_callback_query.unwrap_or(
+                        AnswerCallbackQuery::new(&query.id)
+                            .text("游戏已结束")
+                            .show_alert(true),
+                    ),
+                )
+                .await?;
             return Ok(HandlerResult::Stop);
         }
     }
