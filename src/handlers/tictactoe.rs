@@ -1,7 +1,4 @@
-use crate::{
-    context::Context,
-    error::{Error, TicTacToeOpError},
-};
+use crate::{context::Context, error::Error};
 use carapax::{
     handler,
     methods::{AnswerCallbackQuery, EditMessageText, SendMessage},
@@ -13,6 +10,7 @@ use carapax::{
 };
 use serde::{Deserialize, Serialize};
 use std::fmt;
+use thiserror::Error;
 
 // 棋子类型
 #[derive(Copy, Clone, PartialEq, Serialize, Deserialize)]
@@ -90,6 +88,17 @@ impl From<&User> for Player {
     }
 }
 
+// Tic-Tac-Toe 错误操作
+#[derive(Error, Debug)]
+enum OpFail {
+    // 在非空白处落子
+    #[error("请在空白处落子")]
+    CellNotEmpty,
+    // 在非己方回合落子
+    #[error("不是你的回合")]
+    NotYourTurn,
+}
+
 // 棋局
 #[derive(Clone, Serialize, Deserialize)]
 struct Game {
@@ -114,17 +123,17 @@ impl Game {
         self.user[pos.row][pos.col]
     }
 
-    // 设定指定位子的棋子，失败时返回 Err(TicTacToeOpError)
-    fn set(&mut self, pos: PiecePosition, piece: Piece) -> Result<(), TicTacToeOpError> {
+    // 设定指定位子的棋子，失败时返回 Err(OpFail)
+    fn set(&mut self, pos: PiecePosition, piece: Piece) -> Result<(), OpFail> {
         if self.get(pos) == Piece::Empty {
             self.user[pos.row][pos.col] = piece;
             return Ok(());
         }
-        Err(TicTacToeOpError::CellNotEmpty)
+        Err(OpFail::CellNotEmpty)
     }
 
-    // 尝试落子，成功时返回 Ok(棋局状态)，失败时返回 Err(TicTacToeOpError)
-    fn try_put(&mut self, pos: PiecePosition, user: &User) -> Result<GameState, TicTacToeOpError> {
+    // 尝试落子，成功时返回 Ok(棋局状态)，失败时返回 Err(OpFail)
+    fn try_put(&mut self, pos: PiecePosition, user: &User) -> Result<GameState, OpFail> {
         // 轮到 Cross 落子
         if let Piece::Cross = self.turn {
             // 有玩家作为 Cross
@@ -136,7 +145,7 @@ impl Game {
                         Err(err) => return Err(err),
                     }
                 } else {
-                    return Err(TicTacToeOpError::NotYourTurn);
+                    return Err(OpFail::NotYourTurn);
                 }
             // 没有玩家作为 Cross
             } else {
@@ -157,7 +166,7 @@ impl Game {
                         Err(err) => return Err(err),
                     }
                 } else {
-                    return Err(TicTacToeOpError::NotYourTurn);
+                    return Err(OpFail::NotYourTurn);
                 }
             } else {
                 match self.set(pos, Piece::Nought) {

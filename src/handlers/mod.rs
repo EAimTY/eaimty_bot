@@ -12,13 +12,19 @@ pub mod tictactoe;
 
 use async_trait::async_trait;
 use carapax::ErrorPolicy;
+use chrono::Local;
 
 pub struct ErrorHandler;
 
 #[async_trait]
 impl carapax::ErrorHandler for ErrorHandler {
     async fn handle(&mut self, err: carapax::HandlerError) -> ErrorPolicy {
-        eprintln!("Error: {}", err);
+        // 打印错误至 stderr
+        eprintln!(
+            "[{}]error: {}",
+            Local::now().format("%F %T %z").to_string(),
+            err
+        );
         ErrorPolicy::Stop
     }
 }
