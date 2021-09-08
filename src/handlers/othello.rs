@@ -1,4 +1,7 @@
-use crate::{context::Context, error::ErrorHandler};
+use crate::{
+    context::Context,
+    error::{Error, OthelloOpError},
+};
 use carapax::{
     handler,
     methods::{AnswerCallbackQuery, EditMessageText, SendMessage},
@@ -9,7 +12,7 @@ use carapax::{
     HandlerResult,
 };
 use serde::{Deserialize, Serialize};
-use std::{cmp, error::Error, fmt};
+use std::{cmp, fmt};
 
 // 棋子类型
 #[derive(Copy, Clone, PartialEq, Serialize, Deserialize)]
@@ -73,28 +76,6 @@ impl PiecePosition {
     }
 }
 
-// 落子失败类型
-#[derive(Debug)]
-enum ActionError {
-    Unplaceable,
-    NotYourTurn,
-}
-
-impl fmt::Display for ActionError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            ActionError::Unplaceable => write!(f, "无法在此落子"),
-            ActionError::NotYourTurn => write!(f, "不是你的回合"),
-        }
-    }
-}
-
-impl Error for ActionError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        None
-    }
-}
-
 // 存储玩家信息
 #[derive(Clone, Serialize, Deserialize)]
 struct Player {
@@ -143,8 +124,8 @@ impl Game {
         self.board[pos.row][pos.col]
     }
 
-    // 设定指定位子的棋子，失败时返回 Err(ActionError::Unplaceable)
-    fn set(&mut self, pos: PiecePosition, piece: Piece) -> Result<(), ActionError> {
+    // 设定指定位子的棋子，失败时返回 Err(OthelloOpError::Unplaceable)
+    fn set(&mut self, pos: PiecePosition, piece: Piece) -> Result<(), OthelloOpError> {
         let mut is_changed = false;
         if self.board[pos.row][pos.col] == Piece::Empty {
             // 向上查找
@@ -359,7 +340,7 @@ impl Game {
         if is_changed {
             Ok(())
         } else {
-            Err(ActionError::Unplaceable)
+            Err(OthelloOpError::CantPutHere)
         }
     }
 
@@ -494,8 +475,8 @@ impl Game {
         true
     }
 
-    // 尝试落子，成功时返回 Ok(棋局是否结束)，失败时返回 Err(ActionError)
-    fn try_put(&mut self, pos: PiecePosition, user: &User) -> Result<bool, ActionError> {
+    // 尝试落子，成功时返回 Ok(棋局是否结束)，失败时返回 Err(OthelloOpError)
+    fn try_put(&mut self, pos: PiecePosition, user: &User) -> Result<bool, OthelloOpError> {
         // 轮到 Black 落子
         if let Piece::Black = self.turn {
             // 有玩家作为 Black
@@ -512,7 +493,7 @@ impl Game {
                         Err(err) => return Err(err),
                     }
                 } else {
-                    return Err(ActionError::NotYourTurn);
+                    return Err(OthelloOpError::NotYourTurn);
                 }
             // 没有玩家作为 Black
             } else {
@@ -537,7 +518,7 @@ impl Game {
                         Err(err) => return Err(err),
                     }
                 } else {
-                    return Err(ActionError::NotYourTurn);
+                    return Err(OthelloOpError::NotYourTurn);
                 }
             } else {
                 match self.set(pos, Piece::White) {
@@ -656,16 +637,20 @@ impl Game {
 pub async fn othello_command_handler(
     context: &Context,
     command: Command,
-) -> Result<HandlerResult, ErrorHandler> {
+) -> Result<HandlerResult, Error> {
     let message = command.get_message();
     let chat_id = message.get_chat_id();
     // 创建新游戏
     let game = Game::new();
     // 向 session 存储游戏
-    let mut session = context.session_manager.get_session(message)?;
+    let mut session = context
+        .session_manager
+        .get_session(message)
+        .or_else(|_| return Err(Error::GetSessionError))?;
     session
         .set(format!("othello_{}", message.id), &game)
-        .await?;
+        .await
+        .or_else(|_| return Err(Error::SessionDataError))?;
     // 发送游戏地图
     let method = SendMessage::new(chat_id, "黑白棋")
         .reply_markup(ReplyMarkup::InlineKeyboardMarkup(
@@ -680,7 +665,7 @@ pub async fn othello_command_handler(
 pub async fn othello_inlinekeyboard_handler(
     context: &Context,
     query: CallbackQuery,
-) -> Result<HandlerResult, ErrorHandler> {
+) -> Result<HandlerResult, Error> {
     // 检查非空 query
     if let Some(data) = query.data {
         // 尝试 parse callback data
@@ -693,10 +678,12 @@ pub async fn othello_inlinekeyboard_handler(
                 // 尝试从 session 获取游戏
                 let mut session = context
                     .session_manager
-                    .get_session(command_message.as_ref())?;
+                    .get_session(command_message.as_ref())
+                    .or_else(|_| return Err(Error::GetSessionError))?;
                 let game: Option<Game> = session
                     .get(format!("othello_{}", command_message.id))
-                    .await?;
+                    .await
+                    .or_else(|_| return Err(Error::SessionDataError))?;
                 if let Some(mut game) = game {
                     let chat_id = message.get_chat_id();
                     let user = query.from;
@@ -720,7 +707,8 @@ pub async fn othello_inlinekeyboard_handler(
                                 // 删除棋局
                                 session
                                     .remove(format!("othello_{}", command_message.id))
-                                    .await?;
+                                    .await
+                                    .or_else(|_| return Err(Error::SessionDataError))?;
                             } else {
                                 edit_message_text = EditMessageText::new(
                                     chat_id,
@@ -735,7 +723,8 @@ pub async fn othello_inlinekeyboard_handler(
                                 // 存储棋局
                                 session
                                     .set(format!("othello_{}", command_message.id), &game)
-                                    .await?;
+                                    .await
+                                    .or_else(|_| return Err(Error::SessionDataError))?;
                             }
                             context.api.execute(edit_message_text).await?;
                             answer_callback_query = Some(AnswerCallbackQuery::new(&query.id));

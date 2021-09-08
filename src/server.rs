@@ -1,37 +1,12 @@
-use crate::{config::Config, context::Context, handlers};
+use crate::{config::Config, context::Context, error::ServerError, handlers};
 use carapax::{
     longpoll::LongPoll,
     session::{backend::fs::FilesystemBackend, SessionCollector, SessionManager},
     webhook, Api, Config as ApiConfig, Dispatcher,
 };
-use std::{error::Error, fmt, time::Duration};
+use std::time::Duration;
 
-#[derive(Debug)]
-pub enum ServerError {
-    ApiError,
-    ProxyError,
-    TmpdirError,
-    WebhookError,
-}
-
-impl fmt::Display for ServerError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            ServerError::ApiError => write!(f, "Failed to create API"),
-            ServerError::ProxyError => write!(f, "Failed to set proxy"),
-            ServerError::TmpdirError => write!(f, "Failed to create temp directory"),
-            ServerError::WebhookError => write!(f, "Failed to run webhook server"),
-        }
-    }
-}
-
-impl Error for ServerError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        None
-    }
-}
-
-pub struct Server {}
+pub struct Server;
 
 impl Server {
     pub async fn run(config: Config) -> Result<(), ServerError> {
@@ -58,6 +33,7 @@ impl Server {
             SessionManager::new(backend),
             tmpdir,
         ));
+        // 添加 handlers
         dispatcher.add_handler(handlers::access::group_message_filter);
         dispatcher.add_handler(handlers::about::about_command_handler);
         dispatcher.add_handler(handlers::agree::agree_keyword_handler);
@@ -76,6 +52,8 @@ impl Server {
         dispatcher.add_handler(handlers::start::start_command_handler);
         dispatcher.add_handler(handlers::tictactoe::tictactoe_command_handler);
         dispatcher.add_handler(handlers::tictactoe::tictactoe_inlinekeyboard_handler);
+        // 添加错误处理 handler
+        dispatcher.set_error_handler(handlers::ErrorHandler);
         // 运行
         if config.webhook_port == 0 {
             println!("Running in longpoll mode");
@@ -84,7 +62,7 @@ impl Server {
             println!("Running at port {} in webhook mode", config.webhook_port);
             webhook::run_server(([127, 0, 0, 1], config.webhook_port), "/", dispatcher)
                 .await
-                .or_else(|_| return Err(ServerError::WebhookError))?;
+                .or_else(|_| return Err(ServerError::WebhookServerError))?;
         }
         Ok(())
     }

@@ -1,11 +1,11 @@
-use crate::{context::Context, error::ErrorHandler};
+use crate::{context::Context, error::Error};
 use carapax::{handler, methods::SendMessage, types::Command, HandlerResult};
 
 #[handler(command = "/about")]
 pub async fn about_command_handler(
     context: &Context,
     command: Command,
-) -> Result<HandlerResult, ErrorHandler> {
+) -> Result<HandlerResult, Error> {
     let chat_id = command.get_message().get_chat_id();
     let about = "eaimty_bot\n\
                 \n\

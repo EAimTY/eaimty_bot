@@ -1,4 +1,7 @@
-use crate::{context::Context, error::ErrorHandler};
+use crate::{
+    context::Context,
+    error::{Error, TicTacToeOpError},
+};
 use carapax::{
     handler,
     methods::{AnswerCallbackQuery, EditMessageText, SendMessage},
@@ -9,7 +12,7 @@ use carapax::{
     HandlerResult,
 };
 use serde::{Deserialize, Serialize};
-use std::{error::Error, fmt};
+use std::fmt;
 
 // 棋子类型
 #[derive(Copy, Clone, PartialEq, Serialize, Deserialize)]
@@ -70,28 +73,6 @@ enum GameState {
     Win,
 }
 
-// 落子失败类型
-#[derive(Debug)]
-enum ActionError {
-    CellNotEmpty,
-    NotYourTurn,
-}
-
-impl fmt::Display for ActionError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            ActionError::CellNotEmpty => write!(f, "请在空白处落子"),
-            ActionError::NotYourTurn => write!(f, "不是你的回合"),
-        }
-    }
-}
-
-impl Error for ActionError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        None
-    }
-}
-
 // 存储玩家信息
 #[derive(Clone, Serialize, Deserialize)]
 struct Player {
@@ -133,17 +114,17 @@ impl Game {
         self.user[pos.row][pos.col]
     }
 
-    // 设定指定位子的棋子，失败时返回 Err(ActionError)
-    fn set(&mut self, pos: PiecePosition, piece: Piece) -> Result<(), ActionError> {
+    // 设定指定位子的棋子，失败时返回 Err(TicTacToeOpError)
+    fn set(&mut self, pos: PiecePosition, piece: Piece) -> Result<(), TicTacToeOpError> {
         if self.get(pos) == Piece::Empty {
             self.user[pos.row][pos.col] = piece;
             return Ok(());
         }
-        Err(ActionError::CellNotEmpty)
+        Err(TicTacToeOpError::CellNotEmpty)
     }
 
-    // 尝试落子，成功时返回 Ok(棋局状态)，失败时返回 Err(ActionError)
-    fn try_put(&mut self, pos: PiecePosition, user: &User) -> Result<GameState, ActionError> {
+    // 尝试落子，成功时返回 Ok(棋局状态)，失败时返回 Err(TicTacToeOpError)
+    fn try_put(&mut self, pos: PiecePosition, user: &User) -> Result<GameState, TicTacToeOpError> {
         // 轮到 Cross 落子
         if let Piece::Cross = self.turn {
             // 有玩家作为 Cross
@@ -155,7 +136,7 @@ impl Game {
                         Err(err) => return Err(err),
                     }
                 } else {
-                    return Err(ActionError::NotYourTurn);
+                    return Err(TicTacToeOpError::NotYourTurn);
                 }
             // 没有玩家作为 Cross
             } else {
@@ -176,7 +157,7 @@ impl Game {
                         Err(err) => return Err(err),
                     }
                 } else {
-                    return Err(ActionError::NotYourTurn);
+                    return Err(TicTacToeOpError::NotYourTurn);
                 }
             } else {
                 match self.set(pos, Piece::Nought) {
@@ -300,16 +281,20 @@ impl Game {
 pub async fn tictactoe_command_handler(
     context: &Context,
     command: Command,
-) -> Result<HandlerResult, ErrorHandler> {
+) -> Result<HandlerResult, Error> {
     let message = command.get_message();
     let chat_id = message.get_chat_id();
     // 创建新游戏
     let game = Game::new();
     // 向 session 存储游戏
-    let mut session = context.session_manager.get_session(message)?;
+    let mut session = context
+        .session_manager
+        .get_session(message)
+        .or_else(|_| return Err(Error::GetSessionError))?;
     session
         .set(format!("tictactoe_{}", message.id), &game)
-        .await?;
+        .await
+        .or_else(|_| return Err(Error::SessionDataError))?;
     // 发送游戏地图
     let method = SendMessage::new(chat_id, "Tic-Tac-Toe")
         .reply_markup(ReplyMarkup::InlineKeyboardMarkup(
@@ -324,7 +309,7 @@ pub async fn tictactoe_command_handler(
 pub async fn tictactoe_inlinekeyboard_handler(
     context: &Context,
     query: CallbackQuery,
-) -> Result<HandlerResult, ErrorHandler> {
+) -> Result<HandlerResult, Error> {
     // 检查非空 query
     if let Some(data) = query.data {
         // 尝试 parse callback data
@@ -337,10 +322,12 @@ pub async fn tictactoe_inlinekeyboard_handler(
                 // 尝试从 session 获取游戏
                 let mut session = context
                     .session_manager
-                    .get_session(command_message.as_ref())?;
+                    .get_session(command_message.as_ref())
+                    .or_else(|_| return Err(Error::GetSessionError))?;
                 let game: Option<Game> = session
                     .get(format!("tictactoe_{}", command_message.id))
-                    .await?;
+                    .await
+                    .or_else(|_| return Err(Error::SessionDataError))?;
                 if let Some(mut game) = game {
                     let chat_id = message.get_chat_id();
                     let user = query.from;
@@ -366,7 +353,8 @@ pub async fn tictactoe_inlinekeyboard_handler(
                                     // 存储棋局
                                     session
                                         .set(format!("tictactoe_{}", command_message.id), &game)
-                                        .await?;
+                                        .await
+                                        .or_else(|_| return Err(Error::SessionDataError))?;
                                 }
                                 // 平局
                                 GameState::Tie => {
@@ -379,7 +367,8 @@ pub async fn tictactoe_inlinekeyboard_handler(
                                     // 删除棋局
                                     session
                                         .remove(format!("tictactoe_{}", command_message.id))
-                                        .await?;
+                                        .await
+                                        .or_else(|_| return Err(Error::SessionDataError))?;
                                 }
                                 // 玩家获胜
                                 GameState::Win => {
@@ -396,7 +385,8 @@ pub async fn tictactoe_inlinekeyboard_handler(
                                     // 删除棋局
                                     session
                                         .remove(format!("tictactoe_{}", command_message.id))
-                                        .await?;
+                                        .await
+                                        .or_else(|_| return Err(Error::SessionDataError))?;
                                 }
                             }
                             context.api.execute(edit_message_text).await?;

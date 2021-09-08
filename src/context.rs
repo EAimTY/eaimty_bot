@@ -1,4 +1,4 @@
-use crate::handlers::access;
+use crate::handlers;
 use carapax::{
     session::{backend::fs::FilesystemBackend, SessionManager},
     Api,
@@ -10,7 +10,8 @@ pub struct Context {
     pub api: Api,
     pub session_manager: SessionManager<FilesystemBackend>,
     pub tmpdir: TempDir,
-    pub bot_info: RwLock<Option<access::BotInfo>>,
+    pub bot_info: RwLock<Option<handlers::access::BotInfo>>,
+    pub ocr_langs: handlers::ocr::OcrLangs,
 }
 
 impl Context {
@@ -24,6 +25,7 @@ impl Context {
             session_manager,
             tmpdir,
             bot_info: RwLock::new(None),
+            ocr_langs: handlers::ocr::OcrLangs::init(),
         }
     }
 }
