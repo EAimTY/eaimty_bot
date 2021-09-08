@@ -231,8 +231,7 @@ impl Iterator for BoxesAround {
                 && row < &(self.map_height as i8)
             {
                 // 更新 offset 并返回位置
-                self.offset += index;
-                self.offset += 1;
+                self.offset += index + 1;
                 return Some(BoxPosition::from_coords(
                     (*col as usize, *row as usize),
                     (self.map_width, self.map_height),

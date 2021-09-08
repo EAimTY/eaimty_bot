@@ -55,25 +55,3 @@ pub enum ServerError {
     #[error("Failed to run webhook server")]
     WebhookServerError,
 }
-
-// Tic-Tac-Toe 错误操作
-#[derive(Error, Debug)]
-pub enum TicTacToeOpError {
-    // 在非空白处落子
-    #[error("请在空白处落子")]
-    CellNotEmpty,
-    // 在非己方回合落子
-    #[error("不是你的回合")]
-    NotYourTurn,
-}
-
-// 黑白棋错误操作
-#[derive(Error, Debug)]
-pub enum OthelloOpError {
-    // 在无法落子处落子
-    #[error("无法在此落子")]
-    CantPutHere,
-    // 在非己方回合落子
-    #[error("不是你的回合")]
-    NotYourTurn,
-}

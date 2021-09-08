@@ -1,7 +1,4 @@
-use crate::{
-    context::Context,
-    error::{Error, OthelloOpError},
-};
+use crate::{context::Context, error::Error};
 use carapax::{
     handler,
     methods::{AnswerCallbackQuery, EditMessageText, SendMessage},
@@ -13,6 +10,7 @@ use carapax::{
 };
 use serde::{Deserialize, Serialize};
 use std::{cmp, fmt};
+use thiserror::Error;
 
 // 棋子类型
 #[derive(Copy, Clone, PartialEq, Serialize, Deserialize)]
@@ -93,6 +91,17 @@ impl From<&User> for Player {
     }
 }
 
+// 黑白棋错误操作
+#[derive(Error, Debug)]
+enum OpFail {
+    // 在无法落子处落子
+    #[error("无法在此落子")]
+    CantPutHere,
+    // 在非己方回合落子
+    #[error("不是你的回合")]
+    NotYourTurn,
+}
+
 // 棋局
 #[derive(Clone, Serialize, Deserialize)]
 struct Game {
@@ -124,8 +133,8 @@ impl Game {
         self.board[pos.row][pos.col]
     }
 
-    // 设定指定位子的棋子，失败时返回 Err(OthelloOpError::Unplaceable)
-    fn set(&mut self, pos: PiecePosition, piece: Piece) -> Result<(), OthelloOpError> {
+    // 设定指定位子的棋子，失败时返回 Err(OpFail::CantPutHere)
+    fn set(&mut self, pos: PiecePosition, piece: Piece) -> Result<(), OpFail> {
         let mut is_changed = false;
         if self.board[pos.row][pos.col] == Piece::Empty {
             // 向上查找
@@ -340,7 +349,7 @@ impl Game {
         if is_changed {
             Ok(())
         } else {
-            Err(OthelloOpError::CantPutHere)
+            Err(OpFail::CantPutHere)
         }
     }
 
@@ -475,8 +484,8 @@ impl Game {
         true
     }
 
-    // 尝试落子，成功时返回 Ok(棋局是否结束)，失败时返回 Err(OthelloOpError)
-    fn try_put(&mut self, pos: PiecePosition, user: &User) -> Result<bool, OthelloOpError> {
+    // 尝试落子，成功时返回 Ok(棋局是否结束)，失败时返回 Err(OpFail)
+    fn try_put(&mut self, pos: PiecePosition, user: &User) -> Result<bool, OpFail> {
         // 轮到 Black 落子
         if let Piece::Black = self.turn {
             // 有玩家作为 Black
@@ -493,7 +502,7 @@ impl Game {
                         Err(err) => return Err(err),
                     }
                 } else {
-                    return Err(OthelloOpError::NotYourTurn);
+                    return Err(OpFail::NotYourTurn);
                 }
             // 没有玩家作为 Black
             } else {
@@ -518,7 +527,7 @@ impl Game {
                         Err(err) => return Err(err),
                     }
                 } else {
-                    return Err(OthelloOpError::NotYourTurn);
+                    return Err(OpFail::NotYourTurn);
                 }
             } else {
                 match self.set(pos, Piece::White) {
