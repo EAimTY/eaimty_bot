@@ -3,7 +3,7 @@ use thiserror::Error;
 #[derive(Error, Debug)]
 pub enum Error {
     // 无法通过 Telegram Bot API 执行操作的错误
-    #[error("failed to execute method")]
+    #[error("failed to execute method: {0}")]
     ExecuteError(#[from] carapax::ExecuteError),
     // 无法获取 session 的错误
     #[error("failed to get session")]
@@ -12,7 +12,7 @@ pub enum Error {
     #[error("failed to read / write data from session")]
     SessionDataError,
     // 无法操作 IO 的错误
-    #[error("failed to operate file")]
+    #[error("failed to operate file: {0}")]
     IoError(#[from] std::io::Error),
     // 下载文件的错误
     #[error("failed to download file")]
@@ -23,6 +23,20 @@ pub enum Error {
     // 无法读取图片的错误
     #[error("failed to read image for Tesseract")]
     TessReadImageError,
+}
+
+// 配置参数错误
+#[derive(Error, Debug)]
+pub enum ConfigError {
+    // 参数解析错误
+    #[error("Failed to parse arguments\n{0}")]
+    ParseError(String),
+    // 未知参数的错误
+    #[error("Unexpected fragment\n{0}")]
+    UnexpectedFragment(String),
+    // 帮助信息
+    #[error("{0}")]
+    Help(String),
 }
 
 // Tic-Tac-Toe 错误操作
