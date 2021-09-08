@@ -370,7 +370,7 @@ pub async fn tictactoe_inlinekeyboard_handler(
                                     edit_message_text = EditMessageText::new(
                                         chat_id,
                                         message.id,
-                                        format!("Tic-Tac-Toe\n\n{}\n平局", game.get_players()),
+                                        format!("Tic-Tac-Toe\n\n{}\n\n平局", game.get_players()),
                                     )
                                     .reply_markup(game.get_inline_keyboard());
                                     // 删除棋局
@@ -385,7 +385,7 @@ pub async fn tictactoe_inlinekeyboard_handler(
                                         chat_id,
                                         message.id,
                                         format!(
-                                            "Tic-Tac-Toe\n\n{}\n{} 赢了",
+                                            "Tic-Tac-Toe\n\n{}\n\n{} 赢了",
                                             game.get_players(),
                                             user.get_full_name()
                                         ),
