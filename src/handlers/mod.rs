@@ -3,6 +3,7 @@ pub mod access;
 pub mod agree;
 pub mod dart;
 pub mod dice;
+pub mod help;
 pub mod minesweeper;
 pub mod ocr;
 pub mod othello;
@@ -20,11 +21,7 @@ pub struct ErrorHandler;
 impl carapax::ErrorHandler for ErrorHandler {
     async fn handle(&mut self, err: carapax::HandlerError) -> ErrorPolicy {
         // 打印错误至 stderr
-        eprintln!(
-            "[{}]error: {}",
-            Local::now().format("%F %T %z").to_string(),
-            err
-        );
+        eprintln!("[{}]{}", Local::now().format("%F %T %z").to_string(), err);
         ErrorPolicy::Stop
     }
 }
