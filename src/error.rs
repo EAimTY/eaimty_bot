@@ -51,6 +51,9 @@ pub enum ServerError {
     // 临时文件目录创建错误
     #[error("Failed to create temp directory")]
     TmpdirError,
+    // bot 命令列表设置错误
+    #[error("Failed to set bot command list")]
+    BotCommandListError,
     // Webhook Server 运行错误
     #[error("Failed to run webhook server")]
     WebhookServerError,

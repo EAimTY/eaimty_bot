@@ -1,8 +1,8 @@
 use crate::{context::Context, error::Error};
 use carapax::{
     handler,
-    methods::GetMe,
-    types::{Message, MessageKind},
+    methods::{GetMe, SetMyCommands},
+    types::{Message, MessageKind, Update},
     HandlerResult,
 };
 
@@ -16,6 +16,20 @@ impl BotInfo {
     pub fn from(id: i64, username: String) -> Self {
         Self { id, username }
     }
+}
+
+#[handler]
+pub async fn set_bot_command(context: &Context, _update: Update) -> Result<HandlerResult, Error> {
+    // 在首次收到 update 时向 Telegram 更新 bot 命令列表
+    let is_bot_command_set = context.bot_commands.read().await.is_set;
+    if !is_bot_command_set {
+        let command_list = (*context.bot_commands.read().await).command_list.clone();
+        let set_my_commands = SetMyCommands::new(command_list);
+        context.api.execute(set_my_commands).await?;
+        let mut bot_commands = context.bot_commands.write().await;
+        bot_commands.is_set = true;
+    }
+    Ok(HandlerResult::Continue)
 }
 
 #[handler]
