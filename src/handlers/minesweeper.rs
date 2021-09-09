@@ -536,11 +536,9 @@ impl Game {
     // 获取用时
     fn get_time(&self) -> String {
         let duration = Duration::seconds(Local::now().timestamp() - self.start_time);
-        format!(
-            "用时：{} 分 {} 秒",
-            duration.num_minutes(),
-            duration.num_seconds()
-        )
+        let minute = duration.num_minutes();
+        let second = duration.num_seconds() - minute * 60;
+        format!("用时：{} 分 {} 秒", minute, second)
     }
 }
 

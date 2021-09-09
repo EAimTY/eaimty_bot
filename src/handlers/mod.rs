@@ -20,11 +20,7 @@ pub struct ErrorHandler;
 impl carapax::ErrorHandler for ErrorHandler {
     async fn handle(&mut self, err: carapax::HandlerError) -> ErrorPolicy {
         // 打印错误至 stderr
-        eprintln!(
-            "[{}]{}",
-            Local::now().format("%F %T %z").to_string(),
-            err
-        );
+        eprintln!("[{}]{}", Local::now().format("%F %T %z").to_string(), err);
         ErrorPolicy::Stop
     }
 }
