@@ -5,7 +5,7 @@ use carapax::{
     session::SessionId,
     types::{
         CallbackQuery, Command, InlineKeyboardButton, InlineKeyboardButtonKind,
-        InlineKeyboardMarkup, MessageData, ReplyMarkup, Update, UpdateKind,
+        InlineKeyboardMarkup, Message, MessageData, ReplyMarkup,
     },
     HandlerResult,
 };
@@ -207,68 +207,65 @@ pub async fn ocr_inlinekeyboard_handler(
 }
 
 #[handler]
-pub async fn ocr_image_handler(context: &Context, update: Update) -> Result<HandlerResult, Error> {
-    // 检查 Update 类型为 Message
-    if let UpdateKind::Message(message) = &update.kind {
-        // 检查 Message 类型为 Photo 并获取 photo data
-        if let MessageData::Photo { data, .. } = &message.data {
-            let chat_id = message.get_chat_id();
-            // 获取 Photo 发送者
-            if let Some(user) = message.get_user() {
-                // 从 session 获取 OCR 状态
-                let mut session = context
-                    .session_manager
-                    .get_session(SessionId::new(chat_id, user.id))
-                    .or_else(|_| return Err(Error::GetSessionError))?;
-                let ocr: Option<Ocr> = session
-                    .get("ocr")
-                    .await
-                    .or_else(|_| return Err(Error::SessionDataError))?;
-                // 检查该用户是否触发过 /ocr 指令
-                if let Some(ocr) = ocr {
-                    // 检查该用户是否已经选择过 OCR 目标语言
-                    if let Some(lang) = ocr.get() {
-                        // 从 session 中移除存储的 OCR 状态
-                        session
-                            .remove("ocr")
-                            .await
-                            .or_else(|_| return Err(Error::SessionDataError))?;
-                        // 获取图片 URL
-                        let file_id = &data.last().unwrap().file_id;
-                        let method = GetFile::new(file_id);
-                        let photo = context.api.execute(method).await?;
-                        let photo_url = photo.file_path.unwrap();
-                        // 下载图片
-                        let photo_save_path = {
-                            let mut path = context.tmpdir.path().to_path_buf().join(file_id);
-                            path.set_extension("jpg");
-                            path
-                        };
-                        let mut photo = File::create(&photo_save_path).await?;
-                        let mut stream = context
-                            .api
-                            .download_file(photo_url)
-                            .await
-                            .or_else(|_| return Err(Error::FileDownloadError))?;
-                        while let Some(chunk) = stream.next().await {
-                            photo
-                                .write_all(
-                                    &chunk.or_else(|_| return Err(Error::FileDownloadError))?,
-                                )
-                                .await?;
-                        }
-                        // 使用 LepTess 识别图片
-                        let mut leptess = LepTess::new(None, &lang)
-                            .or_else(|_| return Err(Error::TessInitError))?;
-                        leptess
-                            .set_image(photo_save_path)
-                            .or_else(|_| return Err(Error::TessReadImageError))?;
-                        let result = leptess.get_utf8_text().unwrap_or(String::from("识别失败"));
-                        // 发送结果
-                        let method = SendMessage::new(chat_id, result);
-                        context.api.execute(method).await?;
-                        return Ok(HandlerResult::Stop);
+pub async fn ocr_image_handler(
+    context: &Context,
+    message: Message,
+) -> Result<HandlerResult, Error> {
+    if let MessageData::Photo { data, .. } = &message.data {
+        let chat_id = message.get_chat_id();
+        // 获取 Photo 发送者
+        if let Some(user) = message.get_user() {
+            // 从 session 获取 OCR 状态
+            let mut session = context
+                .session_manager
+                .get_session(SessionId::new(chat_id, user.id))
+                .or_else(|_| return Err(Error::GetSessionError))?;
+            let ocr: Option<Ocr> = session
+                .get("ocr")
+                .await
+                .or_else(|_| return Err(Error::SessionDataError))?;
+            // 检查该用户是否触发过 /ocr 指令
+            if let Some(ocr) = ocr {
+                // 检查该用户是否已经选择过 OCR 目标语言
+                if let Some(lang) = ocr.get() {
+                    // 从 session 中移除存储的 OCR 状态
+                    session
+                        .remove("ocr")
+                        .await
+                        .or_else(|_| return Err(Error::SessionDataError))?;
+                    // 获取图片 URL
+                    let file_id = &data.last().unwrap().file_id;
+                    let method = GetFile::new(file_id);
+                    let photo = context.api.execute(method).await?;
+                    let photo_url = photo.file_path.unwrap();
+                    // 下载图片
+                    let photo_save_path = {
+                        let mut path = context.tmpdir.path().to_path_buf().join(file_id);
+                        path.set_extension("jpg");
+                        path
+                    };
+                    let mut photo = File::create(&photo_save_path).await?;
+                    let mut stream = context
+                        .api
+                        .download_file(photo_url)
+                        .await
+                        .or_else(|_| return Err(Error::FileDownloadError))?;
+                    while let Some(chunk) = stream.next().await {
+                        photo
+                            .write_all(&chunk.or_else(|_| return Err(Error::FileDownloadError))?)
+                            .await?;
                     }
+                    // 使用 LepTess 识别图片
+                    let mut leptess =
+                        LepTess::new(None, &lang).or_else(|_| return Err(Error::TessInitError))?;
+                    leptess
+                        .set_image(photo_save_path)
+                        .or_else(|_| return Err(Error::TessReadImageError))?;
+                    let result = leptess.get_utf8_text().unwrap_or(String::from("识别失败"));
+                    // 发送结果
+                    let method = SendMessage::new(chat_id, result);
+                    context.api.execute(method).await?;
+                    return Ok(HandlerResult::Stop);
                 }
             }
         }
