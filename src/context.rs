@@ -7,6 +7,45 @@ use carapax::{
 use tempfile::TempDir;
 use tokio::sync::RwLock;
 
+pub struct Context {
+    pub api: Api,
+    pub session_manager: SessionManager<FilesystemBackend>,
+    pub tmpdir: TempDir,
+    pub bot_info: RwLock<Option<BotInfo>>,
+    pub ocr_langs: handlers::ocr::OcrLangs,
+    pub bot_commands: BotCommands,
+}
+
+impl Context {
+    pub fn new(
+        api: Api,
+        session_manager: SessionManager<FilesystemBackend>,
+        tmpdir: TempDir,
+    ) -> Result<Self, ServerError> {
+        Ok(Self {
+            api,
+            session_manager,
+            tmpdir,
+            bot_info: RwLock::new(None),
+            ocr_langs: handlers::ocr::OcrLangs::init(),
+            bot_commands: BotCommands::init()?,
+        })
+    }
+}
+
+// bot 自身信息
+#[derive(Clone)]
+pub struct BotInfo {
+    pub id: i64,
+    pub username: String,
+}
+
+impl BotInfo {
+    pub fn from(id: i64, username: String) -> Self {
+        Self { id, username }
+    }
+}
+
 // 定义 bot 命令列表
 pub struct BotCommands {
     pub is_set: RwLock<bool>,
@@ -52,32 +91,6 @@ impl BotCommands {
         Ok(Self {
             is_set: RwLock::new(false),
             command_list,
-        })
-    }
-}
-
-pub struct Context {
-    pub api: Api,
-    pub session_manager: SessionManager<FilesystemBackend>,
-    pub tmpdir: TempDir,
-    pub bot_info: RwLock<Option<handlers::access::BotInfo>>,
-    pub ocr_langs: handlers::ocr::OcrLangs,
-    pub bot_commands: BotCommands,
-}
-
-impl Context {
-    pub fn new(
-        api: Api,
-        session_manager: SessionManager<FilesystemBackend>,
-        tmpdir: TempDir,
-    ) -> Result<Self, ServerError> {
-        Ok(Self {
-            api,
-            session_manager,
-            tmpdir,
-            bot_info: RwLock::new(None),
-            ocr_langs: handlers::ocr::OcrLangs::init(),
-            bot_commands: BotCommands::init()?,
         })
     }
 }
