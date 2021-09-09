@@ -34,6 +34,9 @@ pub enum ConfigError {
     // 未知参数的错误
     #[error("Unexpected fragment\n{0}")]
     UnexpectedFragment(String),
+    // 未提供 API token 的错误
+    #[error("Need Telegram Bot HTTP API token\n{0}")]
+    NoToken(String),
     // 帮助信息
     #[error("{0}")]
     Help(String),

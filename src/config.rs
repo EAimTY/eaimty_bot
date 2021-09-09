@@ -35,7 +35,7 @@ impl Config {
         // 尝试解析传入的命令行参数
         let matches = opts
             .parse(&args[1..])
-            .or_else(|_| return Err(ConfigError::ParseError(usage.clone())))?;
+            .or_else(|_| return Err(ConfigError::NoToken(usage.clone())))?;
         // 若有未定义的参数报错
         if !matches.free.is_empty() {
             return Err(ConfigError::UnexpectedFragment(usage.clone()));
@@ -45,11 +45,7 @@ impl Config {
             return Err(ConfigError::Help(usage.clone()));
         }
         // 处理传入的参数
-        let token = if let Some(token) = matches.opt_str("t") {
-            token
-        } else {
-            return Err(ConfigError::ParseError(usage.clone()));
-        };
+        let token = matches.opt_str("t").ok_or_else(|| ConfigError::ParseError(usage.clone()))?;
         let proxy = matches.opt_str("p");
         let webhook_port = matches
             .opt_str("w")
