@@ -3,6 +3,7 @@ pub mod access;
 pub mod agree;
 pub mod dart;
 pub mod dice;
+pub mod help;
 pub mod minesweeper;
 pub mod ocr;
 pub mod othello;

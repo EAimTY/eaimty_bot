@@ -43,7 +43,8 @@ impl BotCommands {
             ("othello", "玩黑白棋"),
             ("slot", "转一次老虎机"),
             ("tictactoe", "玩 Tic-Tac-Toe"),
-            ("about", "关于本 bot")
+            ("help", "帮助信息"),
+            ("about", "关于")
         )?;
         Ok(Self {
             is_set: RwLock::new(false),
