@@ -1,7 +1,7 @@
 [package]
 name = "eaimty_bot"
 description = "个人用 Telegram Bot"
-version = "0.11.0"
+version = "1.0.0"
 authors = ["EAimTY <ea.imty@gmail.com>"]
 edition = "2018"
 readme = "README.md"
@@ -18,7 +18,7 @@ rand = "0.8"
 serde = "1.0"
 tempfile = "3.2"
 thiserror = "1.0"
-tokio = { version = "1.10", features = ["rt-multi-thread", "macros"] }
+tokio = { version = "1.11", features = ["rt-multi-thread", "macros"] }
 tokio-stream = { version = "0.1", default-features = false }
 
 [profile.release]

@@ -45,7 +45,9 @@ impl Config {
             return Err(ConfigError::Help(usage.clone()));
         }
         // 处理传入的参数
-        let token = matches.opt_str("t").ok_or_else(|| ConfigError::ParseError(usage.clone()))?;
+        let token = matches
+            .opt_str("t")
+            .ok_or_else(|| ConfigError::ParseError(usage.clone()))?;
         let proxy = matches.opt_str("p");
         let webhook_port = matches
             .opt_str("w")
