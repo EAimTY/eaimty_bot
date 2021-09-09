@@ -8,9 +8,8 @@ use tempfile::TempDir;
 use tokio::sync::RwLock;
 
 // 定义 bot 命令列表
-#[derive(Clone)]
 pub struct BotCommands {
-    pub is_set: bool,
+    pub is_set: RwLock<bool>,
     pub command_list: Vec<BotCommand>,
 }
 
@@ -47,7 +46,7 @@ impl BotCommands {
             ("about", "关于本 bot")
         )?;
         Ok(Self {
-            is_set: false,
+            is_set: RwLock::new(false),
             command_list,
         })
     }
@@ -59,7 +58,7 @@ pub struct Context {
     pub tmpdir: TempDir,
     pub bot_info: RwLock<Option<handlers::access::BotInfo>>,
     pub ocr_langs: handlers::ocr::OcrLangs,
-    pub bot_commands: RwLock<BotCommands>,
+    pub bot_commands: BotCommands,
 }
 
 impl Context {
@@ -74,7 +73,7 @@ impl Context {
             tmpdir,
             bot_info: RwLock::new(None),
             ocr_langs: handlers::ocr::OcrLangs::init(),
-            bot_commands: RwLock::new(BotCommands::init()?),
+            bot_commands: BotCommands::init()?,
         })
     }
 }
