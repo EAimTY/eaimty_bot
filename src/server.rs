@@ -33,9 +33,11 @@ impl Server {
             SessionManager::new(backend),
             tmpdir,
         )?);
+        // 添加错误处理 handler
+        dispatcher.set_error_handler(handlers::ErrorHandler);
         // 添加 handlers
-        dispatcher.add_handler(handlers::access::set_bot_command);
-        dispatcher.add_handler(handlers::access::group_message_filter);
+        dispatcher.add_handler(handlers::set_bot_command);
+        dispatcher.add_handler(handlers::group_message_filter);
         dispatcher.add_handler(handlers::about::about_command_handler);
         dispatcher.add_handler(handlers::agree::agree_command_handler);
         dispatcher.add_handler(handlers::agree::agree_keyword_handler);
@@ -55,8 +57,6 @@ impl Server {
         dispatcher.add_handler(handlers::start::start_command_handler);
         dispatcher.add_handler(handlers::tictactoe::tictactoe_command_handler);
         dispatcher.add_handler(handlers::tictactoe::tictactoe_inlinekeyboard_handler);
-        // 添加错误处理 handler
-        dispatcher.set_error_handler(handlers::ErrorHandler);
         // 运行
         if config.webhook_port == 0 {
             println!("Running in longpoll mode");

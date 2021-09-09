@@ -243,6 +243,21 @@ impl Iterator for BoxesAround {
     }
 }
 
+// 用户点击地图后的结果类型
+struct ClickResult {
+    game_state: GameState,
+    map_changed: bool,
+}
+
+impl ClickResult {
+    fn from(game_state: GameState, map_changed: bool) -> Self {
+        Self {
+            game_state,
+            map_changed,
+        }
+    }
+}
+
 enum GameState {
     Failed,
     OnGoing,
@@ -395,7 +410,7 @@ impl Game {
     }
 
     // 点击地图中目标块
-    fn click(&mut self, mut pos: BoxPosition, player: String) -> GameState {
+    fn click(&mut self, mut pos: BoxPosition, player: String) -> ClickResult {
         // 为目标位置计算下标
         pos.set_index((self.width, self.height));
         // 获取目标块并处理
@@ -424,8 +439,9 @@ impl Game {
                     // 检查游戏是否已经成功
                     if self.is_succeeded() {
                         self.unmask_all();
-                        return GameState::Succeeded;
+                        return ClickResult::from(GameState::Succeeded, true);
                     }
+                    return ClickResult::from(GameState::OnGoing, true);
                 } else {
                     // 点击了地雷，游戏失败，标记目标块为爆炸
                     self.map[&pos] = {
@@ -433,7 +449,7 @@ impl Game {
                         mine_box
                     };
                     self.unmask_all();
-                    return GameState::Failed;
+                    return ClickResult::from(GameState::Failed, true);
                 }
             }
             MaskType::Unmasked => {
@@ -450,25 +466,24 @@ impl Game {
                             }
                         }
                         // 周围 Masked 块数等于该块周围的地雷数时，将周围 Masked 块标记
-                        if masked_count + flagged_count == mine_count {
-                            // 操作用户点击数 + 1
-                            if masked_count > 0 {
-                                let player_click_count = self.players.entry(player).or_insert(0);
-                                *player_click_count += 1;
-                            }
+                        if masked_count > 0 && masked_count + flagged_count == mine_count {
                             // 标记周围 Masked 块
                             for around_pos in BoxesAround::from(&pos, (self.width, self.height)) {
                                 if let MaskType::Masked = self.map[&around_pos].get_mask_type() {
                                     self.map[&around_pos].set_mask_type(MaskType::Flagged);
                                 }
                             }
-                        // 周围 Flagged 块数等于该块周围的地雷数时，将周围 Masked 块 Unmask
-                        } else if flagged_count == mine_count {
                             // 操作用户点击数 + 1
-                            if masked_count > 0 {
-                                let player_click_count = self.players.entry(player).or_insert(0);
-                                *player_click_count += 1;
+                            let player_click_count = self.players.entry(player).or_insert(0);
+                            *player_click_count += 1;
+                            // 检查游戏是否已经成功
+                            if self.is_succeeded() {
+                                self.unmask_all();
+                                return ClickResult::from(GameState::Succeeded, true);
                             }
+                            return ClickResult::from(GameState::OnGoing, true);
+                        // 周围 Flagged 块数等于该块周围的地雷数时，将周围 Masked 块 Unmask
+                        } else if masked_count > 0 && flagged_count == mine_count {
                             // Unmask 周围 Masked 块
                             for around_pos in BoxesAround::from(&pos, (self.width, self.height)) {
                                 let mut mine_box = self.map[&around_pos];
@@ -492,11 +507,15 @@ impl Game {
                                     }
                                 }
                             }
-                        }
-                        // 检查游戏是否已经成功
-                        if self.is_succeeded() {
-                            self.unmask_all();
-                            return GameState::Succeeded;
+                            // 操作用户点击数 + 1
+                            let player_click_count = self.players.entry(player).or_insert(0);
+                            *player_click_count += 1;
+                            // 检查游戏是否已经成功
+                            if self.is_succeeded() {
+                                self.unmask_all();
+                                return ClickResult::from(GameState::Succeeded, true);
+                            }
+                            return ClickResult::from(GameState::OnGoing, true);
                         }
                     }
                 }
@@ -504,7 +523,7 @@ impl Game {
             // 不处理对已插旗块或已爆炸块的操作
             _ => (),
         }
-        GameState::OnGoing
+        return ClickResult::from(GameState::OnGoing, false);
     }
 
     // 获取按钮列表
@@ -598,7 +617,8 @@ pub async fn minesweeper_inlinekeyboard_handler(
                     if game.contains(&pos) {
                         let edit_message_text;
                         // 操作地图并检查游戏是否结束
-                        match game.click(pos, query.from.get_full_name()) {
+                        let click_result = game.click(pos, query.from.get_full_name());
+                        match click_result.game_state {
                             // 游戏失败
                             GameState::Failed => {
                                 edit_message_text = EditMessageText::new(
@@ -652,7 +672,9 @@ pub async fn minesweeper_inlinekeyboard_handler(
                             }
                         }
                         answer_callback_query = Some(AnswerCallbackQuery::new(&query.id));
-                        context.api.execute(edit_message_text).await?;
+                        if click_result.map_changed {
+                            context.api.execute(edit_message_text).await?;
+                        }
                     }
                 }
             }
