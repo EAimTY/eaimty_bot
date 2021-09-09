@@ -35,9 +35,12 @@ impl BotCommands {
     fn init() -> Result<Self, ServerError> {
         // 在此处设置 bot 命令列表
         let command_list = bot_commands!(
-            ("agree", "没有，没有，没有，好，通过！"),
-            ("dart", "掷一枚飞标（可通过汉字“飞标”触发）"),
-            ("dice", "掷一枚骰子（可通过汉字“骰子”触发）"),
+            (
+                "agree",
+                "没有，没有，没有，好，通过！（可通过文字“有没有”触发）"
+            ),
+            ("dart", "掷一枚飞标（可通过文字“飞标”触发）"),
+            ("dice", "掷一枚骰子（可通过文字“骰子”触发）"),
             ("minesweeper", "玩扫雷"),
             ("ocr", "识别图片中文字"),
             ("othello", "玩黑白棋"),
