@@ -37,6 +37,7 @@ impl Server {
         dispatcher.add_handler(handlers::access::set_bot_command);
         dispatcher.add_handler(handlers::access::group_message_filter);
         dispatcher.add_handler(handlers::about::about_command_handler);
+        dispatcher.add_handler(handlers::agree::agree_command_handler);
         dispatcher.add_handler(handlers::agree::agree_keyword_handler);
         dispatcher.add_handler(handlers::dart::dart_command_handler);
         dispatcher.add_handler(handlers::dart::dart_keyword_handler);
