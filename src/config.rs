@@ -1,63 +1,113 @@
-use crate::error::ConfigError;
+use anyhow::{anyhow, bail, Result};
 use getopts::Options;
+use reqwest::Proxy;
 
 pub struct Config {
     pub token: String,
-    pub proxy: Option<String>,
-    pub webhook_port: u16,
+    pub webhook_port: Option<u16>,
+    pub proxy: Option<Proxy>,
 }
 
-impl Config {
-    pub fn parse(args: Vec<String>) -> Result<Self, ConfigError> {
-        // 定义命令行参数
+pub struct ConfigBuilder<'a> {
+    opts: Options,
+    program: Option<&'a str>,
+}
+
+impl<'a> ConfigBuilder<'a> {
+    #[allow(clippy::new_without_default)]
+    pub fn new() -> Self {
         let mut opts = Options::new();
-        opts.optopt(
+
+        opts.reqopt(
             "t",
             "token",
-            "(required) set Telegram Bot HTTP API token",
+            "Set the Telegram Bot HTTP API token (required)",
             "TOKEN",
         );
-        opts.optopt(
-            "p",
-            "proxy",
-            "set proxy (supported: http, https, socks5)",
-            "PROXY",
-        );
+
         opts.optopt(
             "w",
             "webhook-port",
-            "set webhook port (1 ~ 65535) and run bot in webhook mode",
+            "Run in webhook mode listening port (1 ~ 65535)",
             "WEBHOOK_PORT",
         );
-        opts.optflag("h", "help", "print this help menu");
-        // 定义帮助信息
-        let usage = opts.usage(&format!("Usage: {} [options]", args[0]));
-        // 尝试解析传入的命令行参数
-        let matches = opts
-            .parse(&args[1..])
-            .or_else(|_| return Err(ConfigError::NoToken(usage.clone())))?;
-        // 若有未定义的参数报错
-        if !matches.free.is_empty() {
-            return Err(ConfigError::UnexpectedFragment(usage.clone()));
-        };
-        // 若传入 -h 参数，返回帮助信息
-        if matches.opt_present("h") {
-            return Err(ConfigError::Help(usage.clone()));
+
+        opts.optopt(
+            "",
+            "proxy",
+            "Set proxy  (supported: http, https, socks5)",
+            "PROXY",
+        );
+
+        opts.optflag("v", "version", "Print the version");
+        opts.optflag("h", "help", "Print this help menu");
+
+        Self {
+            opts,
+            program: None,
         }
-        // 处理传入的参数
-        let token = matches
-            .opt_str("t")
-            .ok_or_else(|| ConfigError::ParseError(usage.clone()))?;
-        let proxy = matches.opt_str("p");
-        let webhook_port = matches
-            .opt_str("w")
-            .unwrap_or(String::from("0"))
-            .parse::<u16>()
-            .unwrap_or(0);
-        Ok(Self {
+    }
+
+    pub fn get_usage(&self) -> String {
+        self.opts.usage(&format!(
+            "Usage: {} [options]",
+            self.program.unwrap_or(env!("CARGO_PKG_NAME"))
+        ))
+    }
+
+    pub fn parse(&mut self, args: &'a [String]) -> Result<Config> {
+        self.program = Some(&args[0]);
+
+        let matches = self
+            .opts
+            .parse(&args[1..])
+            .map_err(|err| anyhow!("{err}\n\n{}", self.get_usage()))?;
+
+        if !matches.free.is_empty() {
+            bail!(
+                "Unexpected argument: {}\n\n{}",
+                matches.free.join(", "),
+                self.get_usage()
+            );
+        }
+
+        if matches.opt_present("v") {
+            bail!("{}", env!("CARGO_PKG_VERSION"));
+        }
+
+        if matches.opt_present("h") {
+            bail!("{}", self.get_usage());
+        }
+
+        let token = unsafe { matches.opt_str("t").unwrap_unchecked() };
+
+        let webhook_port = if let Some(port) = matches.opt_str("w") {
+            let port = port
+                .parse()
+                .map_err(|err| anyhow!("{err}\n\n{}", self.get_usage()))?;
+
+            if port == 0 {
+                bail!(
+                    "Port 0 cannot be used as the webhook port\n\n{}",
+                    self.get_usage()
+                );
+            }
+
+            Some(port)
+        } else {
+            None
+        };
+
+        let proxy = if let Some(proxy) = matches.opt_str("proxy") {
+            Some(Proxy::all(&proxy).map_err(|err| anyhow!("{err}\n\n{}", self.get_usage()))?)
+        } else {
+            None
+        };
+
+        Ok(Config {
             token,
-            proxy,
             webhook_port,
+            proxy,
         })
     }
 }

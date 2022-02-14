@@ -3,24 +3,28 @@ name = "eaimty_bot"
 description = "个人用 Telegram Bot"
 version = "1.0.0"
 authors = ["EAimTY <ea.imty@gmail.com>"]
-edition = "2018"
+edition = "2021"
+rust-version = "1.59"
 readme = "README.md"
-license = "GPL-3.0 License"
+license = "GPL-3.0-or-later"
 repository = "https://github.com/EAimTY/eaimty_bot"
 
 [dependencies]
-async-trait = "0.1"
-carapax = { version = "0.10", features = ["session-fs"] }
-chrono = { version = "0.4", features = ["clock"], default-features = false }
+anyhow = "1.0"
+bytes = "1.1"
+futures-util = "0.3"
+gamie = { version = "0.8", features = ["connect_four", "minesweeper", "reversi", "tictactoe"] }
 getopts = "0.2"
 leptess = "0.13"
-rand = "0.8"
-serde = "1.0"
-tempfile = "3.2"
-thiserror = "1.0"
-tokio = { version = "1.11", features = ["rt-multi-thread", "macros"] }
-tokio-stream = { version = "0.1", default-features = false }
+parking_lot = { version = "0.12", features = ["send_guard"] }
+rand = { version = "0.8", features = ["getrandom"], default-features = false }
+reqwest = { version = "0.11", default-features = false }
+tgbot = "0.18"
+tokio = { version = "1.16", features = ["rt-multi-thread", "macros"] }
+xxhash-rust = { version = "0.8", features = ["xxh3"] }
 
 [profile.release]
 lto = true
+strip = true
 codegen-units = 1
+panic = "abort"

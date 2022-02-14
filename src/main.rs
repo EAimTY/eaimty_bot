@@ -1,23 +1,34 @@
-use crate::{config::Config, server::Server};
-use std::env;
+pub use crate::{
+    config::{Config, ConfigBuilder},
+    database::Database,
+    handler::{Context, Handler},
+};
+use std::{env, process};
 
+mod bot;
 mod config;
-mod context;
-mod error;
-mod handlers;
-mod server;
+mod database;
+mod handler;
 
 #[tokio::main]
 async fn main() {
     let args: Vec<String> = env::args().collect();
-    let config = match Config::parse(args) {
-        Ok(config) => config,
+
+    let mut cfg_builder = ConfigBuilder::new();
+
+    let cfg = match cfg_builder.parse(&args) {
+        Ok(cfg) => cfg,
         Err(err) => {
-            println!("{}", err);
-            return;
+            eprintln!("{err}");
+            process::exit(1);
         }
     };
-    Server::run(config)
-        .await
-        .unwrap_or_else(|err| println!("{}", err));
+
+    match bot::run(cfg).await {
+        Ok(()) => (),
+        Err(err) => {
+            eprintln!("{err}");
+            process::exit(1);
+        }
+    }
 }

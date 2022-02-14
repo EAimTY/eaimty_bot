@@ -4,18 +4,20 @@
 
 ## 功能
 
-- [x] /agree - 没有，没有，没有，好，通过！（可通过文字“有没有”触发）
-- [x] /dart - 掷一枚飞标（可通过文字“飞标”触发）
-- [x] /dice - 掷一枚骰子（可通过文字“骰子”触发）
-- [x] /minesweeper - 玩扫雷
+- [x] /about - 关于
+- [x] /connectfour - 玩四子棋
+- [x] /dart - 掷一枚飞标
+- [x] /dice - 掷一枚骰子
+- [x] /minesweeper [棋盘高] [棋盘宽] [地雷数] - 玩扫雷
 - [x] /ocr - 识别图片中文字
-- [x] /othello - 玩黑白棋
+- [x] /reversi - 玩黑白棋
 - [x] /slot - 转一次老虎机
 - [x] /tictactoe - 玩 Tic-Tac-Toe
 - [x] /help - 帮助信息
-- [x] /about - 关于
 
 ...
+
+游戏抽象均来自 [EAimTY/gamie](https://github.com/EAimTY/gamie)
 
 ## 依赖
 
