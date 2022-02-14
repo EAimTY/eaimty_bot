@@ -1,40 +1,29 @@
-name: release
-
 on:
   workflow_dispatch:
+
+name: release
 
 jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - run: sudo apt-get -y install binutils upx tesseract-ocr libtesseract-dev libleptonica-dev
-
       - uses: actions/checkout@v2
-      - run: git fetch --all --tags
-
-      - name: Version check
-        id: version_check
-        uses: thebongy/version-check@v1
-        with:
-          file: Cargo.toml
-          tagFormat: v${version}
 
       - uses: actions-rs/toolchain@v1
         with:
-          toolchain: stable
+          toolchain: nightly
+          override: true
+      - run: cargo build --release
+      - run: mv target/release/eaimty_bot eaimty_bot-linux-amd64
 
-      - uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --release
-
-      - name: Binary Optimization
-        run: |
-          strip -s target/release/eaimty_bot
-          upx -9 target/release/eaimty_bot
+      - run: sudo apt-get install -y upx
+      - run: upx --best eaimty_bot-linux-amd64
 
       - uses: ncipollo/release-action@v1
         with:
-          tag: ${{ steps.version_check.outputs.releaseVersion }}
-          artifacts: "target/release/eaimty_bot"
-          token: ${{ secrets.GITHUB_TOKEN }}
+          artifacts: "eaimty_bot-linux-amd64"
+          tag: "latest"
+          name: "latest"
+          body: "latest release"
+          allowUpdates: true
+          token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
