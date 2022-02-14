@@ -20,22 +20,20 @@ mod slot;
 mod start;
 mod tictactoe;
 
-pub struct Context {
-    api: Api,
-    database: Database,
-    username: String,
+#[derive(Clone)]
+pub struct Handler {
+    api: Arc<Api>,
+    database: Arc<Database>,
+    username: Arc<String>,
 }
 
-#[derive(Clone)]
-pub struct Handler(Arc<Context>);
-
 impl Handler {
-    pub fn new(api: Api, database: Database, username: String) -> Self {
-        Self(Arc::new(Context {
-            api,
+    pub fn new(database: Arc<Database>, api: Api, username: String) -> Self {
+        Self {
             database,
-            username,
-        }))
+            api: Arc::new(api),
+            username: Arc::new(username),
+        }
     }
 }
 
@@ -43,10 +41,10 @@ impl UpdateHandler for Handler {
     type Future = BoxFuture<'static, ()>;
 
     fn handle(&self, update: Update) -> Self::Future {
-        let cx = self.0.clone();
+        let handler = self.clone();
 
         Box::pin(async move {
-            match handle_update(cx, update).await {
+            match handle_update(handler, update).await {
                 Ok(()) => {}
                 Err(err) => {
                     eprintln!("{err}");
@@ -56,46 +54,46 @@ impl UpdateHandler for Handler {
     }
 }
 
-async fn handle_update(context: Arc<Context>, update: Update) -> Result<()> {
+async fn handle_update(handler: Handler, update: Update) -> Result<()> {
     match update.kind {
-        UpdateKind::Message(msg) => handle_message(context, msg).await?,
-        UpdateKind::CallbackQuery(query) => handle_callback_query(context, query).await?,
+        UpdateKind::Message(msg) => handle_message(handler, msg).await?,
+        UpdateKind::CallbackQuery(query) => handle_callback_query(handler, query).await?,
         _ => {}
     }
 
     Ok(())
 }
 
-async fn handle_message(context: Arc<Context>, message: Message) -> Result<()> {
+async fn handle_message(handler: Handler, message: Message) -> Result<()> {
     if !matches!(message.kind, MessageKind::Private { .. })
         && !message
             .get_text()
-            .map_or(false, |text| text.data.contains(&context.username))
+            .map_or(false, |text| text.data.contains(handler.username.as_ref()))
     {
         return Ok(());
     }
 
-    if agree::handle_agree_message(&context, &message).await?
-        || dart::handle_dart_message(&context, &message).await?
-        || dice::handle_dice_message(&context, &message).await?
-        || ocr::handle_ocr_message(&context, &message).await?
-        || slot::handle_slot_message(&context, &message).await?
+    if agree::handle_agree_message(&handler, &message).await?
+        || dart::handle_dart_message(&handler, &message).await?
+        || dice::handle_dice_message(&handler, &message).await?
+        || ocr::handle_ocr_message(&handler, &message).await?
+        || slot::handle_slot_message(&handler, &message).await?
     {
         return Ok(());
     }
 
     if let Ok(cmd) = Command::try_from(message) {
-        if about::handle_about_command(&context, &cmd).await?
-            || connectfour::handle_connectfour_command(&context, &cmd).await?
-            || dart::handle_dart_command(&context, &cmd).await?
-            || dice::handle_dice_command(&context, &cmd).await?
-            || help::handle_help_command(&context, &cmd).await?
-            || minesweeper::handle_minesweeper_command(&context, &cmd).await?
-            || ocr::handle_ocr_command(&context, &cmd).await?
-            || reversi::handle_reversi_command(&context, &cmd).await?
-            || slot::handle_slot_command(&context, &cmd).await?
-            || start::handle_start_command(&context, &cmd).await?
-            || tictactoe::handle_tictactoe_command(&context, &cmd).await?
+        if about::handle_about_command(&handler, &cmd).await?
+            || connectfour::handle_connectfour_command(&handler, &cmd).await?
+            || dart::handle_dart_command(&handler, &cmd).await?
+            || dice::handle_dice_command(&handler, &cmd).await?
+            || help::handle_help_command(&handler, &cmd).await?
+            || minesweeper::handle_minesweeper_command(&handler, &cmd).await?
+            || ocr::handle_ocr_command(&handler, &cmd).await?
+            || reversi::handle_reversi_command(&handler, &cmd).await?
+            || slot::handle_slot_command(&handler, &cmd).await?
+            || start::handle_start_command(&handler, &cmd).await?
+            || tictactoe::handle_tictactoe_command(&handler, &cmd).await?
         {
             return Ok(());
         }
@@ -104,12 +102,12 @@ async fn handle_message(context: Arc<Context>, message: Message) -> Result<()> {
     Ok(())
 }
 
-async fn handle_callback_query(context: Arc<Context>, callback_query: CallbackQuery) -> Result<()> {
-    if connectfour::handle_connectfour_callback_query(&context, &callback_query).await?
-        || minesweeper::handle_minesweeper_callback_query(&context, &callback_query).await?
-        || ocr::handle_ocr_callback_query(&context, &callback_query).await?
-        || reversi::handle_reversi_callback_query(&context, &callback_query).await?
-        || tictactoe::handle_tictactoe_callback_query(&context, &callback_query).await?
+async fn handle_callback_query(handler: Handler, callback_query: CallbackQuery) -> Result<()> {
+    if connectfour::handle_connectfour_callback_query(&handler, &callback_query).await?
+        || minesweeper::handle_minesweeper_callback_query(&handler, &callback_query).await?
+        || ocr::handle_ocr_callback_query(&handler, &callback_query).await?
+        || reversi::handle_reversi_callback_query(&handler, &callback_query).await?
+        || tictactoe::handle_tictactoe_callback_query(&handler, &callback_query).await?
     {
         return Ok(());
     }

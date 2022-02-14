@@ -20,7 +20,7 @@ parking_lot = { version = "0.12", features = ["send_guard"] }
 rand = { version = "0.8", features = ["getrandom"], default-features = false }
 reqwest = { version = "0.11", default-features = false }
 tgbot = "0.18"
-tokio = { version = "1.16", features = ["rt-multi-thread", "macros"] }
+tokio = { version = "1.16", features = ["macros", "rt-multi-thread", "time"] }
 xxhash-rust = { version = "0.8", features = ["xxh3"] }
 
 [profile.release]

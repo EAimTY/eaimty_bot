@@ -1,9 +1,9 @@
 pub use crate::{
     config::{Config, ConfigBuilder},
     database::Database,
-    handler::{Context, Handler},
+    handler::Handler,
 };
-use std::{env, process};
+use std::{env, process, time::Duration};
 
 mod bot;
 mod config;
@@ -24,7 +24,10 @@ async fn main() {
         }
     };
 
-    match bot::run(cfg).await {
+    let (db, gc) = Database::init(Duration::from_secs(3600), Duration::from_secs(3));
+    tokio::spawn(gc);
+
+    match bot::run(cfg, db).await {
         Ok(()) => (),
         Err(err) => {
             eprintln!("{err}");

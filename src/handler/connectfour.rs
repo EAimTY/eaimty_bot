@@ -1,4 +1,4 @@
-use crate::{database::connectfour::Session, Context};
+use crate::{database::connectfour::Session, Handler};
 use anyhow::Result;
 use gamie::connect_four::{ConnectFourError, Player};
 use tgbot::{
@@ -9,13 +9,13 @@ use tgbot::{
     },
 };
 
-pub async fn handle_connectfour_command(context: &Context, command: &Command) -> Result<bool> {
+pub async fn handle_connectfour_command(handler: &Handler, command: &Command) -> Result<bool> {
     if command.get_name() == "/connectfour" {
         let msg = command.get_message();
         let chat_id = msg.get_chat_id();
         let msg_id = msg.id;
 
-        let mut pool = context.database.connectfour.lock();
+        let mut pool = handler.database.connectfour.lock();
 
         let connectfour = Session::new();
 
@@ -27,7 +27,7 @@ pub async fn handle_connectfour_command(context: &Context, command: &Command) ->
 
         drop(pool);
 
-        context.api.execute(send_message).await?;
+        handler.api.execute(send_message).await?;
 
         return Ok(true);
     }
@@ -36,7 +36,7 @@ pub async fn handle_connectfour_command(context: &Context, command: &Command) ->
 }
 
 pub async fn handle_connectfour_callback_query(
-    context: &Context,
+    handler: &Handler,
     callback_query: &CallbackQuery,
 ) -> Result<bool> {
     if let CallbackQuery {
@@ -54,7 +54,7 @@ pub async fn handle_connectfour_callback_query(
             let user_id = user.id;
 
             if col < 7 {
-                let mut pool = context.database.connectfour.lock();
+                let mut pool = handler.database.connectfour.lock();
 
                 if let Some(connectfour) = pool.sessions.get_mut(&[chat_id, cmd_msg_id]) {
                     let next_player = connectfour.game.get_next_player();
@@ -97,8 +97,8 @@ pub async fn handle_connectfour_callback_query(
                                 drop(pool);
 
                                 tokio::try_join!(
-                                    context.api.execute(edit_message),
-                                    context.api.execute(answer_callback_query)
+                                    handler.api.execute(edit_message),
+                                    handler.api.execute(answer_callback_query)
                                 )?;
                             }
                             Err(ConnectFourError::ColumnFilled) => {
@@ -108,7 +108,7 @@ pub async fn handle_connectfour_callback_query(
                                     .text("无法在此落子")
                                     .show_alert(true);
 
-                                context.api.execute(answer_callback_query).await?;
+                                handler.api.execute(answer_callback_query).await?;
                             }
                             _ => unreachable!(),
                         }
@@ -119,7 +119,7 @@ pub async fn handle_connectfour_callback_query(
                             .text("不是你的回合")
                             .show_alert(true);
 
-                        context.api.execute(answer_callback_query).await?;
+                        handler.api.execute(answer_callback_query).await?;
                     }
                 } else {
                     drop(pool);
@@ -128,7 +128,7 @@ pub async fn handle_connectfour_callback_query(
                         .text("找不到游戏")
                         .show_alert(true);
 
-                    context.api.execute(answer_callback_query).await?;
+                    handler.api.execute(answer_callback_query).await?;
                 }
             }
 

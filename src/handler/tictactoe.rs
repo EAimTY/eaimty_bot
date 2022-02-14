@@ -1,4 +1,4 @@
-use crate::{database::tictactoe::Session, Context};
+use crate::{database::tictactoe::Session, Handler};
 use anyhow::Result;
 use gamie::tictactoe::{Player, TicTacToeError};
 use tgbot::{
@@ -9,13 +9,13 @@ use tgbot::{
     },
 };
 
-pub async fn handle_tictactoe_command(context: &Context, command: &Command) -> Result<bool> {
+pub async fn handle_tictactoe_command(handler: &Handler, command: &Command) -> Result<bool> {
     if command.get_name() == "/tictactoe" {
         let msg = command.get_message();
         let chat_id = msg.get_chat_id();
         let msg_id = msg.id;
 
-        let mut pool = context.database.tictactoe.lock();
+        let mut pool = handler.database.tictactoe.lock();
 
         let tictactoe = Session::new();
 
@@ -27,7 +27,7 @@ pub async fn handle_tictactoe_command(context: &Context, command: &Command) -> R
 
         drop(pool);
 
-        context.api.execute(send_message).await?;
+        handler.api.execute(send_message).await?;
 
         return Ok(true);
     }
@@ -36,7 +36,7 @@ pub async fn handle_tictactoe_command(context: &Context, command: &Command) -> R
 }
 
 pub async fn handle_tictactoe_callback_query(
-    context: &Context,
+    handler: &Handler,
     callback_query: &CallbackQuery,
 ) -> Result<bool> {
     if let CallbackQuery {
@@ -54,7 +54,7 @@ pub async fn handle_tictactoe_callback_query(
             let user_id = user.id;
 
             if row < 3 && col < 3 {
-                let mut pool = context.database.tictactoe.lock();
+                let mut pool = handler.database.tictactoe.lock();
 
                 if let Some(tictactoe) = pool.sessions.get_mut(&[chat_id, cmd_msg_id]) {
                     let next_player = tictactoe.game.get_next_player();
@@ -98,8 +98,8 @@ pub async fn handle_tictactoe_callback_query(
                                 drop(pool);
 
                                 tokio::try_join!(
-                                    context.api.execute(edit_message),
-                                    context.api.execute(answer_callback_query)
+                                    handler.api.execute(edit_message),
+                                    handler.api.execute(answer_callback_query)
                                 )?;
                             }
                             Err(TicTacToeError::OccupiedPosition) => {
@@ -109,7 +109,7 @@ pub async fn handle_tictactoe_callback_query(
                                     .text("无法在此落子")
                                     .show_alert(true);
 
-                                context.api.execute(answer_callback_query).await?;
+                                handler.api.execute(answer_callback_query).await?;
                             }
                             _ => unreachable!(),
                         }
@@ -120,7 +120,7 @@ pub async fn handle_tictactoe_callback_query(
                             .text("不是你的回合")
                             .show_alert(true);
 
-                        context.api.execute(answer_callback_query).await?;
+                        handler.api.execute(answer_callback_query).await?;
                     }
                 } else {
                     drop(pool);
@@ -129,7 +129,7 @@ pub async fn handle_tictactoe_callback_query(
                         .text("找不到游戏")
                         .show_alert(true);
 
-                    context.api.execute(answer_callback_query).await?;
+                    handler.api.execute(answer_callback_query).await?;
                 }
             }
 

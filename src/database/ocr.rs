@@ -1,6 +1,7 @@
 use std::{
     collections::HashMap,
     fmt::{Display, Formatter, Result as FmtResult},
+    time::{Duration, Instant},
 };
 use xxhash_rust::xxh3::Xxh3Builder;
 
@@ -17,11 +18,31 @@ impl SessionPool {
             relay: HashMap::with_hasher(Xxh3Builder::new()),
         }
     }
+
+    pub fn collect_garbage(&mut self, lifetime: Duration) {
+        self.sessions.retain(
+            |_,
+             Session {
+                 create_time, relay, ..
+             }| {
+                if create_time.elapsed() < lifetime {
+                    true
+                } else {
+                    if let Some(relay) = relay {
+                        self.relay.remove(relay);
+                    }
+                    false
+                }
+            },
+        );
+    }
 }
 
 pub struct Session {
     pub user: i64,
     pub lang: Option<Language>,
+    pub relay: Option<[i64; 2]>,
+    create_time: Instant,
 }
 
 impl Session {
@@ -30,6 +51,8 @@ impl Session {
         Self {
             user: user_id,
             lang: None,
+            relay: None,
+            create_time: Instant::now(),
         }
     }
 }

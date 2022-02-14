@@ -1,6 +1,6 @@
 use crate::{
     database::minesweeper::{Player, Session},
-    Context,
+    Handler,
 };
 use anyhow::Result;
 use gamie::minesweeper::{Cell, Status};
@@ -13,7 +13,7 @@ use tgbot::{
     },
 };
 
-pub async fn handle_minesweeper_command(context: &Context, command: &Command) -> Result<bool> {
+pub async fn handle_minesweeper_command(handler: &Handler, command: &Command) -> Result<bool> {
     if command.get_name() == "/minesweeper" {
         let msg = command.get_message();
         let chat_id = msg.get_chat_id();
@@ -22,7 +22,7 @@ pub async fn handle_minesweeper_command(context: &Context, command: &Command) ->
         let args = command
             .get_args()
             .iter()
-            .filter(|arg| !arg.contains(&context.username));
+            .filter(|arg| !arg.contains(handler.username.as_ref()));
 
         fn get_args<'a>(
             mut args: impl Iterator<Item = &'a String>,
@@ -47,7 +47,7 @@ pub async fn handle_minesweeper_command(context: &Context, command: &Command) ->
         }
 
         if let Some((height, width, mines)) = get_args(args) {
-            let mut pool = context.database.minesweeper.lock();
+            let mut pool = handler.database.minesweeper.lock();
 
             let minesweeper = Session::new(height, width, mines);
 
@@ -59,10 +59,10 @@ pub async fn handle_minesweeper_command(context: &Context, command: &Command) ->
 
             drop(pool);
 
-            context.api.execute(send_message).await?;
+            handler.api.execute(send_message).await?;
         } else {
             let send_message = SendMessage::new(chat_id, "参数错误").reply_to_message_id(msg_id);
-            context.api.execute(send_message).await?;
+            handler.api.execute(send_message).await?;
         }
 
         return Ok(true);
@@ -72,7 +72,7 @@ pub async fn handle_minesweeper_command(context: &Context, command: &Command) ->
 }
 
 pub async fn handle_minesweeper_callback_query(
-    context: &Context,
+    handler: &Handler,
     callback_query: &CallbackQuery,
 ) -> Result<bool> {
     if let CallbackQuery {
@@ -89,7 +89,7 @@ pub async fn handle_minesweeper_callback_query(
             let chat_id = msg.get_chat_id();
             let user_id = user.id;
 
-            let mut pool = context.database.minesweeper.lock();
+            let mut pool = handler.database.minesweeper.lock();
 
             if let Some(minesweeper) = pool.sessions.get_mut(&[chat_id, cmd_msg_id]) {
                 if row < minesweeper.game.get_height() && col < minesweeper.game.get_width() {
@@ -123,14 +123,14 @@ pub async fn handle_minesweeper_callback_query(
                         drop(pool);
 
                         tokio::try_join!(
-                            context.api.execute(edit_message),
-                            context.api.execute(answer_callback_query)
+                            handler.api.execute(edit_message),
+                            handler.api.execute(answer_callback_query)
                         )?;
                     } else {
                         drop(pool);
 
                         let answer_callback_query = AnswerCallbackQuery::new(id);
-                        context.api.execute(answer_callback_query).await?;
+                        handler.api.execute(answer_callback_query).await?;
                     }
                 }
             } else {
@@ -140,7 +140,7 @@ pub async fn handle_minesweeper_callback_query(
                     .text("找不到游戏")
                     .show_alert(true);
 
-                context.api.execute(answer_callback_query).await?;
+                handler.api.execute(answer_callback_query).await?;
             }
 
             return Ok(true);

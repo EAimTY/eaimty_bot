@@ -1,6 +1,6 @@
 use crate::{
     database::ocr::{Language, Session},
-    Context,
+    Handler,
 };
 use anyhow::Result;
 use bytes::BufMut;
@@ -14,7 +14,7 @@ use tgbot::{
     },
 };
 
-pub async fn handle_ocr_command(context: &Context, command: &Command) -> Result<bool> {
+pub async fn handle_ocr_command(handler: &Handler, command: &Command) -> Result<bool> {
     if command.get_name() == "/ocr" {
         let msg = command.get_message();
 
@@ -22,7 +22,7 @@ pub async fn handle_ocr_command(context: &Context, command: &Command) -> Result<
             let chat_id = msg.get_chat_id();
             let msg_id = msg.id;
 
-            let mut pool = context.database.ocr.lock();
+            let mut pool = handler.database.ocr.lock();
             let session = Session::new(user_id);
             pool.sessions.insert([chat_id, msg_id], session);
 
@@ -32,7 +32,7 @@ pub async fn handle_ocr_command(context: &Context, command: &Command) -> Result<
 
             drop(pool);
 
-            context.api.execute(send_message).await?;
+            handler.api.execute(send_message).await?;
         }
 
         return Ok(true);
@@ -42,7 +42,7 @@ pub async fn handle_ocr_command(context: &Context, command: &Command) -> Result<
 }
 
 pub async fn handle_ocr_callback_query(
-    context: &Context,
+    handler: &Handler,
     callback_query: &CallbackQuery,
 ) -> Result<bool> {
     if let CallbackQuery {
@@ -59,12 +59,13 @@ pub async fn handle_ocr_callback_query(
             let chat_id = msg.get_chat_id();
             let user_id = user.id;
 
-            let mut pool = context.database.ocr.lock();
+            let mut pool = handler.database.ocr.lock();
 
             if let Some(session) = pool.sessions.get_mut(&[chat_id, cmd_msg_id]) {
                 if session.user == user_id {
                     let edit_message = if let CallbackData::Select(lang) = data {
                         session.lang = Some(lang);
+                        session.relay = Some([chat_id, msg_id]);
                         pool.relay.insert([chat_id, msg_id], cmd_msg_id);
 
                         EditMessageText::new(
@@ -75,7 +76,6 @@ pub async fn handle_ocr_callback_query(
                         .reply_markup(get_lang_unselect_keyboard())
                     } else {
                         session.lang = None;
-                        pool.relay.remove(&[chat_id, msg_id]);
 
                         EditMessageText::new(chat_id, msg_id, "请选择 OCR 目标语言")
                             .reply_markup(get_lang_select_keyboard())
@@ -86,8 +86,8 @@ pub async fn handle_ocr_callback_query(
                     drop(pool);
 
                     tokio::try_join!(
-                        context.api.execute(edit_message),
-                        context.api.execute(answer_callback_query)
+                        handler.api.execute(edit_message),
+                        handler.api.execute(answer_callback_query)
                     )?;
                 } else {
                     drop(pool);
@@ -96,7 +96,7 @@ pub async fn handle_ocr_callback_query(
                         .text("不是命令触发者")
                         .show_alert(true);
 
-                    context.api.execute(answer_callback_query).await?;
+                    handler.api.execute(answer_callback_query).await?;
                 }
             } else {
                 drop(pool);
@@ -105,17 +105,17 @@ pub async fn handle_ocr_callback_query(
                     .text("找不到会话")
                     .show_alert(true);
 
-                context.api.execute(answer_callback_query).await?;
+                handler.api.execute(answer_callback_query).await?;
             }
-        }
 
-        return Ok(true);
+            return Ok(true);
+        }
     }
 
     Ok(false)
 }
 
-pub async fn handle_ocr_message(context: &Context, message: &Message) -> Result<bool> {
+pub async fn handle_ocr_message(handler: &Handler, message: &Message) -> Result<bool> {
     if let (MessageData::Photo { data, .. }, Some(user_id), Some(relay_msg)) = (
         &message.data,
         message.get_user_id(),
@@ -125,12 +125,13 @@ pub async fn handle_ocr_message(context: &Context, message: &Message) -> Result<
         let chat_id = message.get_chat_id();
         let relay_msg_id = relay_msg.id;
 
-        let mut pool = context.database.ocr.lock();
+        let mut pool = handler.database.ocr.lock();
 
         if let Some(cmd_msg_id) = pool.relay.get(&[chat_id, relay_msg_id]).copied() {
             if let Some(Session {
                 user,
                 lang: Some(lang),
+                ..
             }) = pool.sessions.get(&[chat_id, cmd_msg_id])
             {
                 if user_id == *user {
@@ -152,9 +153,9 @@ pub async fn handle_ocr_message(context: &Context, message: &Message) -> Result<
                     if let File {
                         file_path: Some(path),
                         ..
-                    } = context.api.execute(get_file).await?
+                    } = handler.api.execute(get_file).await?
                     {
-                        let mut stream = context.api.download_file(path).await?;
+                        let mut stream = handler.api.download_file(path).await?;
 
                         let mut pic = Vec::new();
 
@@ -169,12 +170,12 @@ pub async fn handle_ocr_message(context: &Context, message: &Message) -> Result<
                         let send_message =
                             SendMessage::new(chat_id, res).reply_to_message_id(msg_id);
 
-                        context.api.execute(send_message).await?;
+                        handler.api.execute(send_message).await?;
                     } else {
                         let send_message =
                             SendMessage::new(chat_id, "图片获取失败").reply_to_message_id(msg_id);
 
-                        context.api.execute(send_message).await?;
+                        handler.api.execute(send_message).await?;
                     }
 
                     return Ok(true);

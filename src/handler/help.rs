@@ -1,8 +1,8 @@
-use crate::Context;
+use crate::Handler;
 use anyhow::Result;
 use tgbot::{methods::SendMessage, types::Command};
 
-pub async fn handle_help_command(context: &Context, command: &Command) -> Result<bool> {
+pub async fn handle_help_command(handler: &Handler, command: &Command) -> Result<bool> {
     if command.get_name() == "/help" {
         let msg = command.get_message();
         let chat_id = msg.get_chat_id();
@@ -22,7 +22,7 @@ pub async fn handle_help_command(context: &Context, command: &Command) -> Result
 "#;
 
         let send_message = SendMessage::new(chat_id, help).reply_to_message_id(msg_id);
-        context.api.execute(send_message).await?;
+        handler.api.execute(send_message).await?;
 
         return Ok(true);
     }

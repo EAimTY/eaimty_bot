@@ -1,6 +1,9 @@
 use gamie::minesweeper::Minesweeper;
 use rand::rngs::OsRng;
-use std::{collections::HashMap, time::Instant};
+use std::{
+    collections::HashMap,
+    time::{Duration, Instant},
+};
 use xxhash_rust::xxh3::Xxh3Builder;
 
 pub struct SessionPool {
@@ -14,6 +17,11 @@ impl SessionPool {
             sessions: HashMap::with_hasher(Xxh3Builder::new()),
         }
     }
+
+    pub fn collect_garbage(&mut self, lifetime: Duration) {
+        self.sessions
+            .retain(|_, Session { create_time, .. }| create_time.elapsed() < lifetime);
+    }
 }
 
 pub struct Session {
@@ -21,6 +29,7 @@ pub struct Session {
     pub players: HashMap<i64, Player, Xxh3Builder>,
     pub start_time: Option<Instant>,
     pub trigger: Option<String>,
+    create_time: Instant,
 }
 
 impl Session {
@@ -33,6 +42,7 @@ impl Session {
             players: HashMap::with_hasher(Xxh3Builder::new()),
             start_time: None,
             trigger: None,
+            create_time: Instant::now(),
         }
     }
 }
