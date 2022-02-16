@@ -32,7 +32,7 @@ pub async fn handle_minesweeper_command(handler: &Handler, command: &Command) ->
                     if let (Ok(height), Ok(width), Ok(mines)) =
                         (height.parse(), width.parse(), mines.parse())
                     {
-                        if height <= 8 && width <= 8 && height * width > mines {
+                        if height <= 8 && width <= 8 && (height - 1) * (width - 1) >= mines {
                             return Some((height, width, mines));
                         }
                     }
